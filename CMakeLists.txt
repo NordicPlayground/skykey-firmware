@@ -1,0 +1,47 @@
+#
+# Copyright (c) 2021 Nordic Semiconductor
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+cmake_minimum_required(VERSION 3.13.1)
+
+if (NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE ZDebug)
+endif()
+
+if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}")
+  message(FATAL_ERROR
+          "Board ${BOARD} is not supported.\n"
+          "Please make sure board specific configuration files are added to "
+          "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}")
+endif()
+
+if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf")
+  message(FATAL_ERROR
+          "Configuration file for build type ${CMAKE_BUILD_TYPE} is missing.\n"
+          "Please add file ${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf")
+endif()
+
+if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/dts.overlay")
+  set(DTC_OVERLAY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/dts.overlay")
+endif()
+
+# Define configuration files.
+set(CONF_FILE "configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf")
+
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+project("Skykey-Firmware")
+
+# Application sources
+# NORDIC SDK APP START
+target_sources(app PRIVATE
+		src/main.c
+		src/modules/test.c
+)
+# NORDIC SDK APP END
+
+# Include configuration headers
+zephyr_include_directories(
+  configuration/${BOARD}
+  )
