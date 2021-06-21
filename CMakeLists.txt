@@ -31,8 +31,24 @@ project(skykey-firmware)
 
 target_sources(app PRIVATE src/main.c)
 
+target_sources(app PRIVATE
+    src/modules/uart.c
+    src/modules/fingerprint_sensor.c
+)
+
+target_sources(app PRIVATE
+    src/events/uart_data_event.c
+    src/events/uart_transmit_event.c
+)
+
+target_sources(app PRIVATE
+)
+
 zephyr_library_include_directories(
     src
+    src/util
+    src/events
+    src/modules
 )
 
 zephyr_include_directories(

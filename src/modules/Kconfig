@@ -1,0 +1,32 @@
+# UART module config
+config UART_DATA_EVENT_LOG_ENABLE
+	bool "Log uart data events"
+	default y
+
+config UART_TRANSMIT_EVENT_LOG_ENABLE
+	bool "Log uart transmit events"
+	default y
+
+config UART_LOG_LEVEL
+	int "UART log level"
+	default 0
+	range 0 4
+	help
+	  Log level of the uart module.
+
+config UART_BUF_SIZE
+	int "UART buffer size"
+	default 64
+	help
+	  Size of uart transmit/receive buffers.
+
+config UART_BUF_COUNT
+	int "UART buffer block count"
+	default 3
+	range 3 255
+	help
+	  Number of buffer blocks assigned for UART instances.
+	  This value is scaled with the number of interfaces.
+	  With the default instance count of 2, and for example 3 buffers,
+	  the total will be 6 buffers.
+	  Note that all buffers are shared between UART instances.
