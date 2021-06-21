@@ -1,0 +1,6 @@
+&uart1 {
+	status="okay";
+    current-speed = <57600>;
+	/delete-property/ rts-pin;
+	/delete-property/ cts-pin;
+};
