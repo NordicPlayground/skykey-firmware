@@ -1,3 +1,19 @@
+# Fingerprint sensor module config
+config FINGERPRINT_UART_ID
+	int "Fingerprint UART id"
+	default 1
+	range 0 1
+	help
+	  ID of UART device used to communicate with the fingerprint sensor. 
+
+config FINGERPRINT_MODULE_ADDRESS
+	hex "Fingerprint module address"
+	default 0xFFFFFFFF
+	range 0x0 0xFFFFFFFF
+	help
+	  Configured address of the fingerprint sensor module. Must corespond
+	  to address programmed on the fingerprint sensor module.
+
 # UART module config
 config UART_DATA_EVENT_LOG_ENABLE
 	bool "Log uart data events"
