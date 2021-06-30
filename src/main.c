@@ -7,14 +7,13 @@
 
 #define MODULE main
 #include <caf/events/module_state_event.h>
-#include <sys/printk.h>
+
 #include <logging/log.h>
 LOG_MODULE_REGISTER(MODULE);
 
 
 void main(void)
 {
-	LOG_INF("Hello World!");
 	if (event_manager_init()) {
 		LOG_ERR("Event manager not initialized");
 	} else {

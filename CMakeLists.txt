@@ -24,9 +24,8 @@ if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/app_${CMAKE_B
 endif()
 
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/dts.overlay")
-  set(DTC_OVERLAY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/dts.overlay")
+  set(DTC_OVERLAY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/dts.overlay;${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/st7789v.overlay")
 endif()
-
 # Define configuration files.
 set(CONF_FILE "configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf")
 
@@ -35,12 +34,16 @@ project("Skykey-Firmware")
 
 # Application sources
 # NORDIC SDK APP START
-target_sources(app PRIVATE
-		src/main.c
-		src/modules/test.c
-)
+target_sources(app PRIVATE src/main.c)
 # NORDIC SDK APP END
 
+# Include source directory
+target_include_directories(app PRIVATE src)
+
+# Application directories
+add_subdirectory(src/modules)
+
+add_subdirectory_ifdef(CONFIG_DISPLAY_MODULE src/display)
 # Include configuration headers
 zephyr_include_directories(
   configuration/${BOARD}
