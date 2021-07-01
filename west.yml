@@ -1,5 +1,5 @@
 manifest:
-  version: 0.9
+  version: "0.10"
 
   defaults:
     revision: main
@@ -7,6 +7,11 @@ manifest:
   remotes:
     - name: nrfconnect
       url-base: https://github.com/nrfconnect/
+    
+    - name: lvgl
+      revision: v8.0.1
+      url-base: https://github.com/lvgl/lvgl
+      path: modules/lib/gui/lvgl
 
   projects:
     - name: sdk-nrf
@@ -14,6 +19,6 @@ manifest:
       path: nrf
       revision: master
       import: true
-  
+
   self:
     path: skykey-firmware

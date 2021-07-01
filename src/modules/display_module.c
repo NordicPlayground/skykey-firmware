@@ -31,6 +31,24 @@ struct display_msg_data {
     } module;
 };
 
+static enum btn_id_type {
+	BTN_UP,
+	BTN_DOWN
+} btn_id;
+
+/* Display module super states */
+static enum state_type {
+	STATE_CONFIGURING,
+	STATE_FOLDER_SELECT,
+	STATE_PLATFORM_SELECT
+} state;
+
+/* Display module sub states */
+static enum sub_state_type {
+	SUB_STATE_LOADING
+} sub_state;
+
+
 /* Display module message queue. */
 #define DISPLAY_QUEUE_ENTRY_COUNT		10
 #define DISPLAY_QUEUE_BYTE_ALIGNMENT	4
@@ -88,17 +106,13 @@ static void module_thread_fn(void)
 		return;
 	}
 
-
-    
-	uint32_t count = 0U;
-	char count_str[11] = {0};
-
-	static lv_style_t style;
-	lv_style_init(&style);
-	lv_style_set_text_font(&style, LV_STATE_DEFAULT, &lv_font_montserrat_20);
+	// lv_theme_material_init(LV_THEME_DEFAULT_COLOR_PRIMARY, LV_THEME_DEFAULT_COLOR_SECONDARY, LV_THEME_DEFAULT_FLAG, LV_THEME_DEFAULT_FONT_SMALL, LV_THEME_DEFAULT_FONT_NORMAL, LV_THEME_DEFAULT_FONT_SUBTITLE, LV_THEME_DEFAULT_FONT_TITLE);
+	// static lv_style_t style;
+	// lv_style_init(&style);
+	// lv_style_set_text_font(&style, LV_STATE_DEFAULT, &lv_font_montserrat_20);
 
 	BuildPages();
-	ChangeScreen(Main, LV_SCR_LOAD_ANIM_FADE_ON, 2000, 0);
+	change_screen(select_scrn, LV_SCR_LOAD_ANIM_FADE_ON, 2000, 0);
 
 	// lv_obj_t *count_label = lv_label_create(lv_scr_act(), NULL);
 	// lv_obj_add_style(count_label, LV_OBJ_PART_ALL, &style);
@@ -113,10 +127,13 @@ static void module_thread_fn(void)
 	display_blanking_off(display_dev);
 	while (1) {
 		int err = module_get_next_msg_with_timeout(&self, &msg, K_MSEC(5));
-		if (err == -EAGAIN) {
-			hw_button_released();
-		} else if (err == 0) {
-			hw_button_pressed(msg.module.click.key_id);
+		if (err == 0) {
+			if (msg.module.click.click == CLICK_LONG) {
+				hw_button_long_pressed(msg.module.click.key_id);
+			} else {
+				hw_button_pressed(msg.module.click.key_id);
+			}
+
 		}
 		lv_task_handler();
 	}
