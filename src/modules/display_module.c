@@ -31,11 +31,6 @@ struct display_msg_data {
     } module;
 };
 
-static enum btn_id_type {
-	BTN_UP,
-	BTN_DOWN
-} btn_id;
-
 /* Display module super states */
 static enum state_type {
 	STATE_CONFIGURING,
@@ -74,7 +69,6 @@ static bool event_handler(const struct event_header *eh)
 
 	if (enqueue_msg) {
 		int err = module_enqueue_msg(&self, &msg);
-
 		if (err) {
 			LOG_ERR("Message could not be queued");
 			//SEND_ERROR(display, NULL, err); //Display module must submit event error (to be replaced with null)
@@ -106,23 +100,9 @@ static void module_thread_fn(void)
 		return;
 	}
 
-	// lv_theme_material_init(LV_THEME_DEFAULT_COLOR_PRIMARY, LV_THEME_DEFAULT_COLOR_SECONDARY, LV_THEME_DEFAULT_FLAG, LV_THEME_DEFAULT_FONT_SMALL, LV_THEME_DEFAULT_FONT_NORMAL, LV_THEME_DEFAULT_FONT_SUBTITLE, LV_THEME_DEFAULT_FONT_TITLE);
-	// static lv_style_t style;
-	// lv_style_init(&style);
-	// lv_style_set_text_font(&style, LV_STATE_DEFAULT, &lv_font_montserrat_20);
 
-	BuildPages();
-	change_screen(select_scrn, LV_SCR_LOAD_ANIM_FADE_ON, 2000, 0);
-
-	// lv_obj_t *count_label = lv_label_create(lv_scr_act(), NULL);
-	// lv_obj_add_style(count_label, LV_OBJ_PART_ALL, &style);
-	// lv_obj_align(count_label, NULL, LV_ALIGN_CENTER, 0, 0);
-	// lv_label_set_text(count_label, "0");
-	// static lv_style_t style_screen;
-	// lv_style_init(&style_screen);
-	// lv_style_set_bg_color(&style_screen, LV_STATE_DEFAULT, LV_COLOR_WHITE);
-	// lv_obj_add_style(lv_scr_act(), LV_OBJ_PART_MAIN, &style_screen);
-
+	lvgl_widgets_init();
+	
 	lv_task_handler();
 	display_blanking_off(display_dev);
 	while (1) {

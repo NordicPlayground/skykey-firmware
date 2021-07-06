@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
-#ifndef _UI_MODULE_EVENT_H_
-#define _UI_MODULE_EVENT_H_
+#ifndef _DISPLAY_MODULE_EVENT_H_
+#define _DISPLAY_MODULE_EVENT_H_
 
 /**
- * @brief UI module event
- * @defgroup ui_module_event UI module event
+ * @brief Display module event
+ * @defgroup display_module_event Display module event
  * @{
  */
 
@@ -19,32 +19,30 @@
 extern "C" {
 #endif
 
-/** @brief UI event types submitted by UI module. */
-enum ui_module_event_type {
-	UI_EVT_BUTTON_DATA_READY,
-	UI_EVT_SHUTDOWN_READY,
-	UI_EVT_ERROR
+/** @brief Display event types submitted by display module. */
+enum display_module_event_type {
+	DISPLAY_EVT_PLATFORM_CHOSEN,
+	DISPLAY_EVT_ERROR
 };
 
-struct ui_module_data {
-	int button_number;
-	int64_t timestamp;
+struct display_module_data {
+	char* platform;
 };
 
 /** @brief UI event. */
-struct ui_module_event {
+struct display_module_event {
 	struct event_header header;
-	enum ui_module_event_type type;
+	enum display_module_event_type type;
 
 	union {
-		struct ui_module_data ui;
+		struct display_module_data display;
 		/* Module ID, used when acknowledging shutdown requests. */
 		uint32_t id;
 		int err;
 	} data;
 };
 
-EVENT_TYPE_DECLARE(ui_module_event);
+EVENT_TYPE_DECLARE(display_module_event);
 
 #ifdef __cplusplus
 }
@@ -54,4 +52,4 @@ EVENT_TYPE_DECLARE(ui_module_event);
  * @}
  */
 
-#endif /* _UI_MODULE_EVENT_H_ */
+#endif /* _DISPLAY_MODULE_EVENT_H_ */

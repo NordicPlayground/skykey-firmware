@@ -6,17 +6,20 @@
 
 #include <stdio.h>
 
-#include "ui_module_event.h"
+#include "display_module_event.h"
 
-static char *get_evt_type_str(enum ui_module_event_type type)
+enum display_module_event_type {
+	DISPLAY_EVT_PLATFORM_CHOSEN
+	DISPLAY_EVT_ERROR
+};
+
+static char *get_evt_type_str(enum display_module_event_type type)
 {
 	switch (type) {
-	case UI_EVT_BUTTON_DATA_READY:
-		return "UI_EVT_BUTTON_DATA_READY";
-	case UI_EVT_SHUTDOWN_READY:
-		return "UI_EVT_SHUTDOWN_READY";
-	case UI_EVT_ERROR:
-		return "UI_EVT_ERROR";
+	case DISPLAY_EVT_PLATFORM_CHOSEN:
+		return "DISPLAY_EVT_PLATFORM_CHOSEN";
+	case DISPLAY_EVT_ERROR:
+		return "DISPLAY_EVT_ERROR";
 	default:
 		return "Unknown event";
 	}
@@ -25,7 +28,7 @@ static char *get_evt_type_str(enum ui_module_event_type type)
 static int log_event(const struct event_header *eh, char *buf,
 		     size_t buf_len)
 {
-	const struct ui_module_event *event = cast_ui_module_event(eh);
+	const struct display_module_event *event = cast_display_module_event(eh);
 
 	if (event->type == UI_EVT_ERROR) {
 		return snprintf(buf, buf_len, "%s - Error code %d",
@@ -40,7 +43,7 @@ static int log_event(const struct event_header *eh, char *buf,
 static void profile_event(struct log_event_buf *buf,
 			 const struct event_header *eh)
 {
-	const struct ui_module_event *event = cast_ui_module_event(eh);
+	const struct display_module_event *event = cast_display_module_event(eh);
 
 #if defined(CONFIG_PROFILER_EVENT_TYPE_STRING)
 	profiler_log_encode_string(buf, get_evt_type_str(event->type),
@@ -50,7 +53,7 @@ static void profile_event(struct log_event_buf *buf,
 #endif
 }
 
-EVENT_INFO_DEFINE(ui_module_event,
+EVENT_INFO_DEFINE(display_module_event,
 #if defined(CONFIG_PROFILER_EVENT_TYPE_STRING)
 		  ENCODE(PROFILER_ARG_STRING),
 #else
@@ -61,11 +64,11 @@ EVENT_INFO_DEFINE(ui_module_event,
 
 #endif /* CONFIG_PROFILER */
 
-EVENT_TYPE_DEFINE(ui_module_event,
-		  CONFIG_UI_EVENTS_LOG,
+EVENT_TYPE_DEFINE(display_module_event,
+		  DISPLAY_UI_EVENTS_LOG,
 		  log_event,
 #if defined(CONFIG_PROFILER)
-		  &ui_module_event_info);
+		  &display_module_event_info);
 #else
 		  NULL);
 #endif

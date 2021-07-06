@@ -7,18 +7,25 @@ extern "C" {
 
 #include <lvgl.h>
 
-extern lv_obj_t * welcome_scrn;
-extern lv_obj_t * nordic_semi_logo;
-extern lv_obj_t * nordic_semi_text;
-extern lv_obj_t * select_scrn;
-extern lv_obj_t * password_manager_label;
-extern lv_obj_t * list1;
-extern lv_group_t * list_group;
+struct display_data {
+	uint8_t id;
+	char* data;
+};
 
-void BuildPages(void);
-void change_screen(lv_obj_t *, int, int, int);
-void hw_button_pressed(uint32_t);
-void hw_button_long_pressed(uint32_t);
+enum display_data_type {
+    DISPLAY_NO_DATA,
+    DISPLAY_FOLDER_CHOSEN,
+    DISPLAY_PLATFORM_CHOSEN
+};
+
+static enum btn_id_type {
+	BTN_DOWN,
+	BTN_UP
+} btn_id;
+
+void lvgl_widgets_init(void);
+void hw_button_pressed(uint32_t key_id);
+struct display_data hw_button_long_pressed(uint32_t key_id);
 
 LV_IMG_DECLARE(nordic_semi_w150px);   // assets\nordic_semi_w150px.c
 LV_IMG_DECLARE(nordic_semi_text_w150px);   // assets\nordic_semi_text_w150px.c
