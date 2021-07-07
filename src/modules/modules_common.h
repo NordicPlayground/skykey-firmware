@@ -44,9 +44,7 @@ struct module_data {
 
 void module_purge_queue(struct module_data *module);
 
-int module_get_next_msg(struct module_data *module, void *msg);
-
-int module_get_next_msg_with_timeout(struct module_data *module, void *msg, k_timeout_t timeout);
+int module_get_next_msg(struct module_data *module, void *msg, k_timeout_t timeout);
 
 /** @brief Enqueue message to a module's queue.
  *

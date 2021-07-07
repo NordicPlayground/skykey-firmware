@@ -4,6 +4,7 @@
 lv_obj_t * scr_welcome;
 lv_obj_t * nordic_semi_logo;
 lv_obj_t * nordic_semi_text;
+lv_obj_t * label_welcome;
 
 lv_obj_t * scr_select_folder;
 lv_obj_t * select_folder_label;
@@ -27,14 +28,24 @@ enum scr_index {
     SCR_SELECT_PLATFORM,
 };
 
+///////////////////// SIZE ////////////////////
+#define DISP_WIDTH CONFIG_LVGL_HOR_RES_MAX
+#define DISP_HEIGHT CONFIG_LVGL_VER_RES_MAX
+
 ///////////////////// IMAGES ////////////////////
+#if CONFIG_LVGL_USE_IMG
 LV_IMG_DECLARE(nordic_semi_w150px);   // assets\nordic_semi_w150px.png
 LV_IMG_DECLARE(nordic_semi_text_w150px);   // assets\nordic_semi_text_w150px.png
+#endif
 
 ///////////////////// FUNCTIONS ////////////////////
 void change_screen(lv_obj_t * target, int fademode, int spd, int delay)
 {
+#if CONFIG_LVGL_USE_ANIMATION
     lv_scr_load_anim(target, fademode, spd, delay, false);
+#else
+    lv_scr_load(target);
+#endif
 }
 
 int get_scr_index(lv_obj_t* scr) {
@@ -49,60 +60,23 @@ int get_scr_index(lv_obj_t* scr) {
     }
 }
 
-
-
-
-///////////////////// NORDIC STYLE /////////////////////
-// static void custom_apply_cb(lv_theme_t* th, lv_obj_t * obj, lv_theme_style_t name) {
-//     static lv_style_list_t* list;
-    
-//     switch(name) {
-//         case LV_THEME_BTN:
-//             list = lv_obj_get_style_list(obj, LV_BTN_PART_MAIN);
-//             _lv_style_list_add_style(list, style_btn);
-//             break;
-//         case LV_THEME_SCR:
-//             list = lv_obj_get_style_list(obj, LV_OBJ_PART_MAIN);
-//             _lv_style_list_add_style(list, style_scr);
-//             break;
-//         default:
-//         break;
-//     }
-// }
-
-// static void init_nordic_theme() {
-//     // lv_style_init(style_btn);
-//     // lv_style_set_bg_color(style_btn, LV_STATE_DEFAULT,LV_COLOR_RED);
-
-//     // lv_style_init(style_scr);
-// 	// lv_style_set_bg_color(style_scr, LV_STATE_DEFAULT, LV_COLOR_WHITE);
-
-//     theme = lv_theme_material_init(LV_COLOR_RED, LV_COLOR_BLUE,
-//                 LV_THEME_MATERIAL_FLAG_NO_FOCUS | LV_THEME_MATERIAL_FLAG_LIGHT, 
-//                 LV_THEME_DEFAULT_FONT_SMALL, LV_THEME_DEFAULT_FONT_NORMAL, LV_THEME_DEFAULT_FONT_SUBTITLE, LV_THEME_DEFAULT_FONT_TITLE);
-//     lv_theme_set_apply_cb(theme, custom_apply_cb);
-//     lv_theme_set_act(theme);
-// }
-
+///////////////////// COMPONENT BUILDING ////////////////////
 
 void generate_list(lv_obj_t* list, const char* opts[], const int num_opts) {
     /*Create a list*/
-    lv_obj_set_size(list, 220, 190);
+    lv_obj_set_size(list, DISP_WIDTH-20, DISP_HEIGHT-50);
     lv_obj_align(list, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -10);
 
     static lv_style_t style_btn;
     lv_style_init(&style_btn);
     lv_style_set_bg_color(&style_btn, LV_BTN_STATE_DISABLED, nordic_blue);
     lv_style_set_value_color(&style_btn, LV_BTN_STATE_DISABLED, LV_COLOR_WHITE);
-    lv_style_set_outline_color(&style_btn, LV_BTN_STATE_DISABLED, LV_COLOR_WHITE);
-    lv_style_set_value_color(&style_btn, LV_STATE_DISABLED, LV_COLOR_WHITE);
     /*Add buttons to the list*/
     lv_obj_t * list_btn;
 
     for (int i=0; i < num_opts; i++) {
         list_btn = lv_list_add_btn(list, NULL, opts[i]);
         lv_obj_add_style(list_btn, LV_BTN_PART_MAIN, &style_btn);
-        // lv_obj_add_style(list, LV_BTN_PART_MAIN, &style_btn);
     }
 }
 
@@ -147,25 +121,30 @@ void set_scr_folder_select(const char* folder_opts[], const int num_opts)
 ///////////////////// SCREENS ////////////////////
 void build_pages(void)
 {
-    // init_nordic_theme();
     /* Set background color to white */
 	static lv_style_t style_screen;
 	lv_style_init(&style_screen);
 	lv_style_set_bg_color(&style_screen, LV_STATE_DEFAULT, LV_COLOR_WHITE);
 
-    // lv_style_init(style_list);
-    // lv_style_set_bg_color(style_list, LV_STATE_DEFAULT, LV_COLOR_WHITE);
-
+    /* Welcome screen */
     scr_welcome = lv_obj_create(NULL, NULL);
     lv_obj_add_style(scr_welcome, LV_OBJ_PART_MAIN, &style_screen);
+#if CONFIG_LVGL_USE_IMG
     nordic_semi_logo = lv_img_create(scr_welcome, NULL);
     lv_img_set_src(nordic_semi_logo, &nordic_semi_w150px);
     lv_obj_align(nordic_semi_logo, scr_welcome, LV_ALIGN_CENTER, 0, -20);
-
     nordic_semi_text = lv_img_create(scr_welcome, NULL);
     lv_img_set_src(nordic_semi_text, &nordic_semi_text_w150px);
     lv_obj_align(nordic_semi_text, nordic_semi_logo, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
-
+#else
+    label_welcome = lv_label_create(scr_welcome, NULL);
+    lv_label_set_long_mode(label_welcome, LV_LABEL_LONG_BREAK);
+    lv_label_set_align(label_welcome, LV_LABEL_ALIGN_CENTER);
+    lv_label_set_text(label_welcome, "Welcome to Password Manager!");
+    lv_obj_set_width(label_welcome, DISP_WIDTH-20);
+    lv_obj_align(label_welcome, NULL, LV_ALIGN_CENTER, 0, 0);
+#endif
+    /* Folder select screen */
     scr_select_folder = lv_obj_create(NULL, NULL);
     lv_obj_add_style(scr_select_folder, LV_OBJ_PART_MAIN, &style_screen);
     select_folder_label = lv_label_create(scr_select_folder, NULL);
@@ -173,22 +152,17 @@ void build_pages(void)
     lv_label_set_align(select_folder_label, LV_LABEL_ALIGN_LEFT);
     lv_label_set_text(select_folder_label, "Folder select");
     lv_obj_align(select_folder_label, scr_select_folder, LV_ALIGN_IN_TOP_LEFT, 10, 10);
-
     const char* folder_opts[] = {"Welcome!", "Folder 1", "Folder 2", "Folder 3", "Folder 4", "Folder 5"};
     set_scr_folder_select(folder_opts, 6);
 
+    /* Platform select screen */
     scr_select_platform = lv_obj_create(NULL, NULL);
-
     lv_obj_add_style(scr_select_platform, LV_OBJ_PART_MAIN, &style_screen);
     select_platform_label = lv_label_create(scr_select_platform, NULL);
     lv_label_set_long_mode(select_platform_label, LV_LABEL_LONG_EXPAND);
     lv_label_set_align(select_platform_label, LV_LABEL_ALIGN_LEFT);
     lv_label_set_text(select_platform_label, "Platform select");
     lv_obj_align(select_platform_label, scr_select_platform, LV_ALIGN_IN_TOP_LEFT, 10, 10);
-
-
-
-
 }
 
 void lvgl_widgets_init(void) {
@@ -255,14 +229,5 @@ struct display_data hw_button_long_pressed(uint32_t btn_id) {
         }
         break;
     }
-    // if (btn_id == BTN_DOWN) {
-    //     info.data_id = DISPLAY_FOLDER_CHOSEN;
-    //     info.data = lv_label_get_text(lv_list_get_btn_label(lv_list_get_btn_selected(select_folder_list)));
-    //     lv_event_send(lv_list_get_btn_selected(select_folder_list), LV_EVENT_VALUE_CHANGED, NULL);
-    // } else if (btn_id == BTN_UP) {
-    //     lv_event_send(lv_list_get_btn_selected(select_folder_list), LV_EVENT_VALUE_CHANGED, NULL);
-    //     info.data_id = DISPLAY_NO_DATA;
-    //     info.data = "";
-    // }
     return info;
 }

@@ -8,11 +8,6 @@
 
 #include "display_module_event.h"
 
-enum display_module_event_type {
-	DISPLAY_EVT_PLATFORM_CHOSEN
-	DISPLAY_EVT_ERROR
-};
-
 static char *get_evt_type_str(enum display_module_event_type type)
 {
 	switch (type) {
@@ -30,7 +25,7 @@ static int log_event(const struct event_header *eh, char *buf,
 {
 	const struct display_module_event *event = cast_display_module_event(eh);
 
-	if (event->type == UI_EVT_ERROR) {
+	if (event->type == DISPLAY_EVT_ERROR) {
 		return snprintf(buf, buf_len, "%s - Error code %d",
 				get_evt_type_str(event->type), event->data.err);
 	}
@@ -65,7 +60,7 @@ EVENT_INFO_DEFINE(display_module_event,
 #endif /* CONFIG_PROFILER */
 
 EVENT_TYPE_DEFINE(display_module_event,
-		  DISPLAY_UI_EVENTS_LOG,
+		  CONFIG_DISPLAY_EVENTS_LOG,
 		  log_event,
 #if defined(CONFIG_PROFILER)
 		  &display_module_event_info);

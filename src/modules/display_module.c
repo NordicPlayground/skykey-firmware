@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <zephyr.h>
+#include <kernel.h>
 #include <event_manager.h>
 #include <settings/settings.h>
 
@@ -19,29 +20,17 @@
 
 #include "modules_common.h"
 #include "display/display_ui.h"
+#include "events/display_module_event.h"
 
 #include <logging/log.h>
 LOG_MODULE_REGISTER(MODULE, CONFIG_DISPLAY_MODULE_LOG_LEVEL);
 
 struct display_msg_data {
     union {
-        // struct app_module_event app;
-        // struct name_module_event name; //Something for displaying username
-        struct click_event click;
+        struct click_event btn;
     } module;
 };
 
-/* Display module super states */
-static enum state_type {
-	STATE_CONFIGURING,
-	STATE_FOLDER_SELECT,
-	STATE_PLATFORM_SELECT
-} state;
-
-/* Display module sub states */
-static enum sub_state_type {
-	SUB_STATE_LOADING
-} sub_state;
 
 
 /* Display module message queue. */
@@ -63,7 +52,7 @@ static bool event_handler(const struct event_header *eh)
 	bool enqueue_msg = false;
     if (is_click_event(eh)) {
         struct click_event *event = cast_click_event(eh);
-        msg.module.click = *event;
+        msg.module.btn = *event;
 		enqueue_msg = true;
     };
 
@@ -71,7 +60,7 @@ static bool event_handler(const struct event_header *eh)
 		int err = module_enqueue_msg(&self, &msg);
 		if (err) {
 			LOG_ERR("Message could not be queued");
-			//SEND_ERROR(display, NULL, err); //Display module must submit event error (to be replaced with null)
+			SEND_ERROR(display, DISPLAY_EVT_ERROR, err);
 		}
 	}
     return false;
@@ -88,7 +77,7 @@ static void module_thread_fn(void)
 	err = module_start(&self);
 	if (err) {
 		LOG_ERR("Failed starting module, error: %d", err);
-		//SEND_ERROR(display, DISPLAY_EVT_ERROR, err); 
+		SEND_ERROR(display, DISPLAY_EVT_ERROR, err); 
 	}
 
 	// err = setup() {
@@ -102,18 +91,26 @@ static void module_thread_fn(void)
 
 
 	lvgl_widgets_init();
-	
+
 	lv_task_handler();
 	display_blanking_off(display_dev);
 	while (1) {
-		int err = module_get_next_msg_with_timeout(&self, &msg, K_MSEC(5));
+		int err = module_get_next_msg(&self, &msg, K_MSEC(5));
 		if (err == 0) {
-			if (msg.module.click.click == CLICK_LONG) {
-				hw_button_long_pressed(msg.module.click.key_id);
+			if (msg.module.btn.click == CLICK_LONG) {
+				const struct display_data feedback = 
+					hw_button_long_pressed(msg.module.btn.key_id);
+				if (feedback.id == DISPLAY_PLATFORM_CHOSEN) {
+					struct display_module_event *display_module_event = 
+						new_display_module_event();
+					
+					display_module_event->data.choice.platform = feedback.data;
+					display_module_event->type = DISPLAY_PLATFORM_CHOSEN;
+					EVENT_SUBMIT(display_module_event);
+				}
 			} else {
-				hw_button_pressed(msg.module.click.key_id);
+				hw_button_pressed(msg.module.btn.key_id);
 			}
-
 		}
 		lv_task_handler();
 	}

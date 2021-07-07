@@ -1,6 +1,5 @@
 #include <lvgl.h>
-
-
+#if CONFIG_LVGL_USE_IMG
 #ifndef LV_ATTRIBUTE_MEM_ALIGN
 #define LV_ATTRIBUTE_MEM_ALIGN
 #endif
@@ -557,3 +556,4 @@ const lv_img_dsc_t nordic_semi_w150px = {
   .data = nordic_semi_map,
 };
 
+#endif //CONFIG_LVGL_USE_IMG

@@ -6,7 +6,15 @@
 
 menuconfig DISPLAY_MODULE
     bool "Display module"
-    default y
+	default y
+	select DISPLAY
+	select LVGL
+	select LVGL_USE_LABEL
+	select LVGL_USE_CONT
+	select LVGL_USE_BTN
+	select LVGL_USE_PAGE
+	select LVGL_USE_LIST
+	select LVGL_USE_GROUP
 
 if DISPLAY_MODULE
 
@@ -18,13 +26,16 @@ config DISPLAY_THREAD_STACK_SIZE
 	int "Display module thread stack size"
 	default 2560
 
-config SPI
-    default y
+# Display-specific settings
 
-if LVGL
+if ST7789V
 
 config LVGL_DISPLAY_DEV_NAME
 	default "ST7789V"
+
+choice ST7789V_PIXEL_FORMAT
+	default ST7789V_RGB565
+endchoice
 
 config LVGL_HOR_RES_MAX
 	default 240
@@ -42,33 +53,8 @@ endchoice
 config LVGL_COLOR_16_SWAP
 	default y
 
-config LVGL_USE_LABEL
-	default y
+endif #ST7789V
 
-config LVGL_USE_IMG
-	default y
-
-config LVGL_USE_BTN
-	default y
-
-
-
-config LVGL_USE_ASSERT_OBJ
-	default y
-
-config LVGL_USE_ASSERT_STYLE
-	default y
-
-config LVGL_USE_ANIMATION
-	default y
-
-config LVGL_USE_OPA_SCALE
-	default y
-
-config LVGL_ANTIALIAS
-	default y
-
-endif # LVGL
 
 endif #DISPLAY_MODULE
 

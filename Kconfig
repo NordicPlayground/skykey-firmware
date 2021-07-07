@@ -9,6 +9,8 @@ menu "Skykey Firmware"
 rsource "src/modules/Kconfig.modules_common"
 rsource "src/modules/Kconfig.display_module"
 
+rsource "src/events/Kconfig"
+
 endmenu
 
 menu "Zephyr Kernel"

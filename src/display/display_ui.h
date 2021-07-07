@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <lvgl.h>
+#include <sys/util.h>
 
 struct display_data {
 	uint8_t id;
@@ -18,17 +19,14 @@ enum display_data_type {
     DISPLAY_PLATFORM_CHOSEN
 };
 
-static enum btn_id_type {
+enum btn_id_type {
 	BTN_DOWN,
 	BTN_UP
-} btn_id;
+};
 
 void lvgl_widgets_init(void);
 void hw_button_pressed(uint32_t key_id);
 struct display_data hw_button_long_pressed(uint32_t key_id);
-
-LV_IMG_DECLARE(nordic_semi_w150px);   // assets\nordic_semi_w150px.c
-LV_IMG_DECLARE(nordic_semi_text_w150px);   // assets\nordic_semi_text_w150px.c
 
 #ifdef __cplusplus
 } /*extern "C"*/

@@ -29,13 +29,13 @@ struct display_module_data {
 	char* platform;
 };
 
-/** @brief UI event. */
+/** @brief Display event. */
 struct display_module_event {
 	struct event_header header;
 	enum display_module_event_type type;
 
 	union {
-		struct display_module_data display;
+		struct display_module_data choice;
 		/* Module ID, used when acknowledging shutdown requests. */
 		uint32_t id;
 		int err;

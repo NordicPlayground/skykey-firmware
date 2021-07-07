@@ -36,28 +36,7 @@ void module_purge_queue(struct module_data *module)
 	k_msgq_purge(module->msg_q);
 }
 
-int module_get_next_msg(struct module_data *module, void *msg)
-{
-	int err = k_msgq_get(module->msg_q, msg, K_FOREVER);
-
-	if (err == 0 && IS_ENABLED(CONFIG_MODULES_COMMON_LOG_LEVEL_DBG)) {
-		struct event_prototype *evt_proto =
-			(struct event_prototype *)msg;
-		struct event_type *event =
-			(struct event_type *)evt_proto->header.type_id;
-		char buf[50];
-
-		event->log_event(&evt_proto->header, buf, sizeof(buf));
-
-		LOG_DBG("%s module: Dequeued %s",
-			module->name,
-			log_strdup(buf));
-	}
-
-	return err;
-}
-
-int module_get_next_msg_with_timeout(struct module_data *module, void *msg, k_timeout_t timeout)
+int module_get_next_msg(struct module_data *module, void *msg, k_timeout_t timeout)
 {
 	int err = k_msgq_get(module->msg_q, msg, timeout);
 
