@@ -1,0 +1,63 @@
+#
+# Copyright (c) 2021 Nordic Semiconductor
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+menuconfig DISPLAY_MODULE
+    bool "Display module"
+	default y
+	select DISPLAY
+	select LVGL
+	select LVGL_USE_LABEL
+	select LVGL_USE_CONT
+	select LVGL_USE_BTN
+	select LVGL_USE_PAGE
+	select LVGL_USE_LIST
+	select LVGL_USE_GROUP
+
+if DISPLAY_MODULE
+
+config DISPLAY_DEV_NAME
+    string "Display device name"
+    default "ST7789V"
+
+config DISPLAY_THREAD_STACK_SIZE
+	int "Display module thread stack size"
+	default 2560
+
+# Display-specific settings
+
+if ST7789V
+
+config LVGL_DISPLAY_DEV_NAME
+	default "ST7789V"
+
+choice ST7789V_PIXEL_FORMAT
+	default ST7789V_RGB565
+endchoice
+
+config LVGL_HOR_RES_MAX
+	default 240
+
+config LVGL_VER_RES_MAX
+	default 240
+
+config LVGL_BITS_PER_PIXEL
+	default 16
+
+choice LVGL_COLOR_DEPTH
+	default LVGL_COLOR_DEPTH_16
+endchoice
+
+config LVGL_COLOR_16_SWAP
+	default y
+
+endif #ST7789V
+
+
+endif #DISPLAY_MODULE
+
+module = DISPLAY_MODULE
+module-str = Display module
+source "subsys/logging/Kconfig.template.log_config"

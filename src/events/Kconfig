@@ -1,0 +1,17 @@
+#
+# Copyright (c) 2021 Nordic Semiconductor
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+menuconfig EVENTS
+	bool "Event options"
+	default y
+
+if EVENTS
+
+config DISPLAY_EVENTS_LOG
+	bool "Enable logging for display module events"
+	default y
+
+endif
