@@ -1,0 +1,51 @@
+menu "DFRobot_sen0348 fingerprint sensor"
+config FINGERPRINT
+    bool "Enable fingerprint sensor"
+    default y
+    depends on GPIO && (UART_INTERRUPT_DRIVEN || UART_ASYNC_API)
+
+if FINGERPRINT
+
+module = SEN0348_DRIVER
+module-str = sen0348 driver
+source "subsys/logging/Kconfig.template.log_config"
+
+config FINGERPRINT_MAX_PACKET_SIZE
+    int "Maximum packet size"
+    default 26
+    range 26 510
+
+config FINGERPRINT_SYNC_BAUDRATE
+    bool "Sync baud rate"
+    help
+       Enable to automatically sync the baud rate of the sensor module to the baud rate of the uart bus.
+       Causes driver initialization to take up to 1.4 seconds extra per sensor, so disabling this is 
+       recommended once the baud rate has been configured once. Might not be supported by all uart drivers.
+
+config FINGERPRINT_UART_BUFFER_SIZE
+    int "Buffer size"
+    range 32 65536
+    default 32 
+    depends on FINGERPRINT
+    help 
+        Size of uart buffers used for recieving and transmitting sensor messages. 
+        Should be 512 if the module needs to up- or download files.
+        Can be safely reduced to 32 if not. Behaviour if moving files with a buffer
+        size < 512 is undefined. 
+
+config FINGERPRINT_UART_RECIEVE_BUFFER_COUNT
+    int  "Recieve buffer count"
+    default 2 if FINGERPRINT_UART_USE_ASYNC
+    default 1 if !FINGERPRINT_UART_USE_ASYNC
+    depends on FINGERPRINT
+    help
+      Number of buffers available for incomming uart data. Will be allocated for each device.
+
+config FINGERPRINT_UART_TRANSMIT_BUFFER_COUNT
+    int  "Fingerprint uart transmit buffer count"
+    default 1
+    depends on FINGERPRINT
+    help
+      Number of buffers available for command packets. Will be allocated for each device.
+endif
+endmenu
