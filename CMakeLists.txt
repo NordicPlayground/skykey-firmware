@@ -1,4 +1,10 @@
 
+#
+# Copyright (c) 2021 Nordic Semiconductor
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
 cmake_minimum_required(VERSION 3.20.3)
 
 if (NOT CMAKE_BUILD_TYPE)
@@ -19,38 +25,31 @@ if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/app_${CMAKE_B
 endif()
 
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/${BOARD}.overlay")
-  set(DTC_OVERLAY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/${BOARD}.overlay")
+  set(DTC_OVERLAY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/${BOARD}.overlay;${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/st7789v.overlay")
 endif()
-
 # Define configuration files.
 set(CONF_FILE "configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf")
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+project("Skykey-Firmware")
 
-project(skykey-firmware)
-
+# Application sources
+# NORDIC SDK APP START
 target_sources(app PRIVATE src/main.c)
+# NORDIC SDK APP END
 
-target_sources(app PRIVATE
-    src/modules/uart.c
-    src/modules/fingerprint_sensor.c
-)
+# Include custom drivers
+target_include_directories(app PRIVATE drivers)
 
-target_sources(app PRIVATE
-    src/events/uart_data_event.c
-    src/events/uart_transmit_event.c
-)
+# Include source directory
+target_include_directories(app PRIVATE src)
 
-target_sources(app PRIVATE
-)
+# Application directories
+add_subdirectory(src/modules)
+add_subdirectory(src/events)
 
-zephyr_library_include_directories(
-    src
-    src/util
-    src/events
-    src/modules
-)
-
+add_subdirectory_ifdef(CONFIG_DISPLAY_MODULE src/display)
+# Include configuration headers
 zephyr_include_directories(
   configuration/${BOARD}
   )
