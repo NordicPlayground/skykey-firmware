@@ -80,6 +80,10 @@ struct fingerprint_api
  * Finger must be moved on the sensor when indicated.
  * 
  * @param dev Fingerprint sensor device
+ * @param id ID to be assigned to enrolled finger
+ * @param op_timeout Timeout for module operations
+ * @param finger_timeout Max time spent waiting for finger after `inter_finger_sleep`
+ * @param inter_finger_sleep Min time spent waiting for finger
  * @return 0 on success, -EBUSY if device is not available.
  */
 static inline int enroll_finger(const struct device *dev, uint16_t id, k_timeout_t op_timeout, k_timeout_t finger_timeout, k_timeout_t inter_finger_sleep)
@@ -92,7 +96,9 @@ static inline int enroll_finger(const struct device *dev, uint16_t id, k_timeout
  * @brief Verifies finger on sensor against module database.
  * 
  * @param dev Fingerprint module device
- * @return 0 on successful verification.
+ * @param op_timeout Timeout for module operations
+ * @param finger_timeout Max time spent waiting for finger after `inter_finger_sleep`
+ * @return Negative on failure, positive on succes. Positive values corespond to the ID if the identified finger. 
  */
 static inline int verify_finger(const struct device *dev, k_timeout_t op_timeout, k_timeout_t finger_timeout)
 {
