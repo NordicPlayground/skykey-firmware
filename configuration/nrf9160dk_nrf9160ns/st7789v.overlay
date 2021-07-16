@@ -18,7 +18,7 @@
 		label = "ST7789V";
 		spi-max-frequency = <20000000>;
 		reg = <0>;
-		cmd-data-gpios = <&gpio0 9 GPIO_ACTIVE_LOW>;	/* D9 */
+		cmd-data-gpios = <&gpio0 20 GPIO_ACTIVE_LOW>;	/* D9 */
 		reset-gpios = <&gpio0 8 GPIO_ACTIVE_LOW>;	/* D8 */
 		width = <240>;
 		height = <240>;
