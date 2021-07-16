@@ -1,0 +1,12 @@
+menu "Fingerprint sensor"
+config FINGERPRINT
+    bool "Enable fingerprint sensor"
+    default n
+
+if FINGERPRINT
+
+rsource "*/Kconfig"
+
+
+endif
+endmenu

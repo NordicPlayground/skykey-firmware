@@ -1,10 +1,11 @@
+
 #
 # Copyright (c) 2021 Nordic Semiconductor
 #
 # SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
 #
 
-cmake_minimum_required(VERSION 3.13.1)
+cmake_minimum_required(VERSION 3.20.3)
 
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE ZDebug)
@@ -23,8 +24,8 @@ if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/app_${CMAKE_B
           "Please add file ${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf")
 endif()
 
-if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/dts.overlay")
-  set(DTC_OVERLAY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/dts.overlay;${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/st7789v.overlay")
+if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/${BOARD}.overlay")
+  set(DTC_OVERLAY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/${BOARD}.overlay;${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/st7789v.overlay")
 endif()
 # Define configuration files.
 set(CONF_FILE "configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf")
@@ -36,6 +37,9 @@ project("Skykey-Firmware")
 # NORDIC SDK APP START
 target_sources(app PRIVATE src/main.c)
 # NORDIC SDK APP END
+
+# Include custom drivers
+add_subdirectory(drivers)
 
 # Include source directory
 target_include_directories(app PRIVATE src)

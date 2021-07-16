@@ -1,0 +1,31 @@
+
+description: |
+  DFRobot sen0348 fingerprint sensor
+
+compatible: "dfrobot,sen0348"
+
+include: uart-device.yaml
+
+properties:
+  int-gpios:
+    required: true 
+    type: phandle-array
+    description: |
+      "Pin used for IRQ."
+  power-gpios:
+    required: false
+    type: phandle-array
+    description: |
+      "Pin used for switchable power supply."
+  sensor-id:
+    required: false
+    type: int
+    default: 0
+    description: |
+      "Id of sensor module. Can be in range 0-255."
+  controller-id:
+    required: false
+    type: int
+    default: 0
+    description: |
+      "Id of controlling device. Can be in range 0-255."

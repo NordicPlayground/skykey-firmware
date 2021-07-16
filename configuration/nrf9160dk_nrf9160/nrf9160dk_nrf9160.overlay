@@ -1,0 +1,15 @@
+
+&uart1 {
+    status = "okay";
+    tx-pin = <30>;
+    rx-pin = <31>;
+    current-speed = <115200>;
+    fingerprint_sensor: sen0348 {
+        compatible = "dfrobot,sen0348";
+        status = "okay";
+        label = "fingerprint sensor 0";
+        int-gpios = <&gpio0 21 0>;
+    };
+};
+
+

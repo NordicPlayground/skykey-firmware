@@ -1,0 +1,49 @@
+
+config SEN0348
+    bool "Enable SEN0348 fingerprint module driver"
+    depends on UART_INTERRUPT_DRIVEN && GPIO
+
+if SEN0348
+
+module = SEN0348_DRIVER
+module-str = sen0348 driver
+source "subsys/logging/Kconfig.template.log_config"
+
+config SEN0348_MAX_PACKET_SIZE
+    int "Maximum packet size"
+    default 26
+    range 26 510
+
+config SEN0348_SYNC_BAUDRATE
+    bool "Sync baud rate"
+    help
+       Enable to automatically sync the baud rate of the sensor module to the baud rate of the uart bus.
+       Causes driver initialization to take up to 1.4 seconds extra per sensor, so disabling this is 
+       recommended once the baud rate has been configured once. Might not be supported by all uart drivers.
+
+config SEN0348_UART_BUFFER_SIZE
+    int "Buffer size"
+    range 32 65536
+    default 32 
+    depends on SEN0348
+    help 
+        Size of uart buffers used for recieving and transmitting sensor messages. 
+        Should be 512 if the module needs to up- or download files.
+        Can be safely reduced to 32 if not. Behaviour if moving files with a buffer
+        size < 512 is undefined. 
+
+config SEN0348_UART_RECIEVE_BUFFER_COUNT
+    int  "Recieve buffer count"
+    default 1
+    depends on SEN0348
+    help
+      Number of buffers available for incomming uart data. Will be allocated for each device.
+
+config SEN0348_UART_TRANSMIT_BUFFER_COUNT
+    int  "Fingerprint uart transmit buffer count"
+    default 1
+    depends on SEN0348
+    help
+      Number of buffers available for command packets. Will be allocated for each device.
+
+endif
