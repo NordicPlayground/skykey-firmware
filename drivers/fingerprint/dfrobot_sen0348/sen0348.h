@@ -92,7 +92,7 @@ typedef struct
 {
     unsigned int remaining_data_packets;
     size_t packet_buffer_index;
-    uint8_t packet_buffer[CONFIG_FINGERPRINT_MAX_PACKET_SIZE];
+    uint8_t packet_buffer[CONFIG_SEN0348_MAX_PACKET_SIZE];
 } data_accumulator;
 
 struct finger_sync_struct

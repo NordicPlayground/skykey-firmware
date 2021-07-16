@@ -293,7 +293,7 @@ static bool _accumulate_response(const struct device *fp_dev, void *data, size_t
                     conf->status = 0;
                     break;
                 }
-                    break;
+                break;
                 }
             }
             clear_accumulator(fp_dev);
@@ -366,10 +366,10 @@ static void _sen0348_uart_irq_callback(const struct device *uart_dev, void *user
  */
 static int _transmit_start(const struct device *dev, uint8_t *data, size_t size)
 {
-    __ASSERT(size <= CONFIG_FINGERPRINT_UART_BUFFER_SIZE,
+    __ASSERT(size <= CONFIG_SEN0348_UART_BUFFER_SIZE,
              "Size %dB greater than configured buffer size %dB.\
-             Consider increasing CONFIG_FINGERPRINT_UART_BUFFER_SIZE in your project's KConfig file.",
-             size, CONFIG_FINGERPRINT_UART_BUFFER_SIZE);
+             Consider increasing CONFIG_SEN0348_UART_BUFFER_SIZE in your project's KConfig file.",
+             size, CONFIG_SEN0348_UART_BUFFER_SIZE);
     struct sen0348_conf *conf = (struct sen0348_conf *)dev->config;
     for (int i = 0; i < size; i++)
     {
@@ -669,7 +669,7 @@ static int user_verify_finger(const struct device *dev, k_timeout_t op_timeout, 
  */
 static int sync_baudrate(const struct device *dev)
 {
-    if (IS_ENABLED(CONFIG_FINGERPRINT_SYNC_BAUDRATE))
+    if (IS_ENABLED(CONFIG_SEN0348_SYNC_BAUDRATE))
     {
 
         if (start_transaction(dev, 0, K_NO_WAIT))
@@ -745,7 +745,7 @@ static void init_uart(const struct device *dev)
 static int sen0348_init(const struct device *dev)
 {
     struct sen0348_conf *conf = (struct sen0348_conf *)dev->config;
-    if (IS_ENABLED(CONFIG_FINGERPRINT_SYNC_BAUDRATE))
+    if (IS_ENABLED(CONFIG_SEN0348_SYNC_BAUDRATE))
     {
         sync_baudrate(dev);
     }
@@ -790,43 +790,43 @@ static struct fingerprint_api api = {
     .verify_finger = user_verify_finger,
 };
 
-#define CREATE_SEN0348_DEVICE(inst)                                         \
-    static K_MEM_SLAB_DEFINE(sen0348_##inst##_rx_slab,                      \
-                             CONFIG_FINGERPRINT_UART_BUFFER_SIZE,           \
-                             CONFIG_FINGERPRINT_UART_RECIEVE_BUFFER_COUNT,  \
-                             UART_SLAB_ALIGNMENT);                          \
-    static K_MEM_SLAB_DEFINE(sen0348_##inst##_tx_slab,                      \
-                             CONFIG_FINGERPRINT_UART_BUFFER_SIZE,           \
-                             CONFIG_FINGERPRINT_UART_TRANSMIT_BUFFER_COUNT, \
-                             UART_SLAB_ALIGNMENT);                          \
-    static K_SEM_DEFINE(sen0348_transaction_sem_##inst, 1, 1);              \
-    static K_SEM_DEFINE(sen0348_command_sem_##inst, 1, 1);                  \
-    static K_MUTEX_DEFINE(sen0348_finger_mutex_##inst);                     \
-    static K_CONDVAR_DEFINE(sen0348_finger_condvar_##inst);                 \
-    static struct fingerprint_module_data sen0348_data_##inst = {};         \
-    static struct sen0348_conf sen0348_conf_##inst = {                      \
-        .rx_slab = &sen0348_##inst##_rx_slab,                               \
-        .tx_slab = &sen0348_##inst##_tx_slab,                               \
-        .uart_dev = DEVICE_DT_GET(DT_INST_BUS(inst)),                       \
-        .irq_pin = GPIO_DT_SPEC_INST_GET(inst, int_gpios),                  \
-        .power_pin = GPIO_DT_SPEC_INST_GET_OR(inst, power_gpios, {{0}}),    \
-        .controller_id = DT_INST_PROP(inst, controller_id),                 \
-        .sensor_id = DT_INST_PROP(inst, sensor_id),                         \
-        .transaction_sem = &sen0348_transaction_sem_##inst,                 \
-        .cmd_sem = &sen0348_command_sem_##inst,                             \
-        .finger_sync = {                                                    \
-            .mut = &sen0348_finger_mutex_##inst,                            \
-            .cond = &sen0348_finger_condvar_##inst,                         \
-        },                                                                  \
-        .finger_gpio_callback = {0},                                        \
-        .remaining_commands = 0,                                            \
-        .status = 0,                                                        \
-        .accumulator = {                                                    \
-            .remaining_data_packets = 0,                                    \
-            .packet_buffer = {0},                                           \
-            .packet_buffer_index = 0,                                       \
-        },                                                                  \
-    };                                                                      \
+#define CREATE_SEN0348_DEVICE(inst)                                      \
+    static K_MEM_SLAB_DEFINE(sen0348_##inst##_rx_slab,                   \
+                             CONFIG_SEN0348_UART_BUFFER_SIZE,            \
+                             CONFIG_SEN0348_UART_RECIEVE_BUFFER_COUNT,   \
+                             UART_SLAB_ALIGNMENT);                       \
+    static K_MEM_SLAB_DEFINE(sen0348_##inst##_tx_slab,                   \
+                             CONFIG_SEN0348_UART_BUFFER_SIZE,            \
+                             CONFIG_SEN0348_UART_TRANSMIT_BUFFER_COUNT,  \
+                             UART_SLAB_ALIGNMENT);                       \
+    static K_SEM_DEFINE(sen0348_transaction_sem_##inst, 1, 1);           \
+    static K_SEM_DEFINE(sen0348_command_sem_##inst, 1, 1);               \
+    static K_MUTEX_DEFINE(sen0348_finger_mutex_##inst);                  \
+    static K_CONDVAR_DEFINE(sen0348_finger_condvar_##inst);              \
+    static struct fingerprint_module_data sen0348_data_##inst = {};      \
+    static struct sen0348_conf sen0348_conf_##inst = {                   \
+        .rx_slab = &sen0348_##inst##_rx_slab,                            \
+        .tx_slab = &sen0348_##inst##_tx_slab,                            \
+        .uart_dev = DEVICE_DT_GET(DT_INST_BUS(inst)),                    \
+        .irq_pin = GPIO_DT_SPEC_INST_GET(inst, int_gpios),               \
+        .power_pin = GPIO_DT_SPEC_INST_GET_OR(inst, power_gpios, {{0}}), \
+        .controller_id = DT_INST_PROP_OR(inst, controller_id, 0),        \
+        .sensor_id = DT_INST_PROP_OR(inst, sensor_id, 0),                \
+        .transaction_sem = &sen0348_transaction_sem_##inst,              \
+        .cmd_sem = &sen0348_command_sem_##inst,                          \
+        .finger_sync = {                                                 \
+            .mut = &sen0348_finger_mutex_##inst,                         \
+            .cond = &sen0348_finger_condvar_##inst,                      \
+        },                                                               \
+        .finger_gpio_callback = {0},                                     \
+        .remaining_commands = 0,                                         \
+        .status = 0,                                                     \
+        .accumulator = {                                                 \
+            .remaining_data_packets = 0,                                 \
+            .packet_buffer = {0},                                        \
+            .packet_buffer_index = 0,                                    \
+        },                                                               \
+    };                                                                   \
     DEVICE_DT_INST_DEFINE(inst, sen0348_init, NULL, &sen0348_data_##inst, &sen0348_conf_##inst, POST_KERNEL, SEN3048_SENSOR_INIT_PRIORITY, &api);
 
 DT_INST_FOREACH_STATUS_OKAY(CREATE_SEN0348_DEVICE);

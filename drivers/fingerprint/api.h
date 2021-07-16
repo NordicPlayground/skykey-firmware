@@ -82,7 +82,7 @@ struct fingerprint_api
  * @param dev Fingerprint sensor device
  * @return 0 on success, -EBUSY if device is not available.
  */
-inline int enroll_finger(const struct device *dev, k_timeout_t op_timeout, k_timeout_t finger_timeout, k_timeout_t inter_finger_sleep)
+static inline int enroll_finger(const struct device *dev, k_timeout_t op_timeout, k_timeout_t finger_timeout, k_timeout_t inter_finger_sleep)
 {
     struct fingerprint_api *api = (struct fingerprint_api *)dev->api;
     return api->enroll_finger(dev, op_timeout, finger_timeout, inter_finger_sleep);
@@ -94,7 +94,7 @@ inline int enroll_finger(const struct device *dev, k_timeout_t op_timeout, k_tim
  * @param dev Fingerprint module device
  * @return 0 on successful verification.
  */
-inline int verify_finger(const struct device *dev, k_timeout_t op_timeout, k_timeout_t finger_timeout)
+static inline int verify_finger(const struct device *dev, k_timeout_t op_timeout, k_timeout_t finger_timeout)
 {
     struct fingerprint_api *api = (struct fingerprint_api *)dev->api;
     return api->verify_finger(dev, op_timeout, finger_timeout);
