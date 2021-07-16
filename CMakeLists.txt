@@ -39,7 +39,7 @@ target_sources(app PRIVATE src/main.c)
 # NORDIC SDK APP END
 
 # Include custom drivers
-target_include_directories(app PRIVATE drivers)
+add_subdirectory(drivers)
 
 # Include source directory
 target_include_directories(app PRIVATE src)
