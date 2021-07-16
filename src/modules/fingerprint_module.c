@@ -27,16 +27,23 @@ static bool event_handler(const struct event_header *eh)
         const struct device *dev = device_get_binding(DT_LABEL(DT_NODELABEL(fingerprint_sensor)));
         if (event->click == CLICK_DOUBLE)
         {
+            static uint16_t id = 1;
             printk("Enroll started\n");
-            if (enroll_finger(dev, K_MSEC(500), K_FOREVER, K_MSEC(2000))){
+            if (enroll_finger(dev, id, K_MSEC(500), K_FOREVER, K_MSEC(2000))){
                 printk("Enrolling failed.\n");
             } else {
                 printk("Enrolling successfull\n");
+                id++;
             }
         }
         if (event->click == CLICK_SHORT){
             printk("Identification started");
-            verify_finger(dev, K_MSEC(500), K_FOREVER);
+            int id = verify_finger(dev, K_MSEC(500), K_FOREVER);
+            if (id <= 0){
+                printk("Verification failed\n");
+            } else {
+                printk("Finger with id = %d verified\n", id);
+            }
         }
         return false;
     }

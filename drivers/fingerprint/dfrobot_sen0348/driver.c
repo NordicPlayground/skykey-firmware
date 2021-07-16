@@ -519,7 +519,7 @@ static int _store_template(const struct device *dev, uint16_t buffer_id, uint16_
  * @return 0 on success, -EBUSY if transaction could not be started or -EAGAIN if finger waiting timed out. 
  * Any other negative integer will be a module specific error code.
  */
-static int user_enroll_finger(const struct device *dev, k_timeout_t op_timeout, k_timeout_t finger_timeout, k_timeout_t inter_finger_sleep)
+static int user_enroll_finger(const struct device *dev, uint16_t id, k_timeout_t op_timeout, k_timeout_t finger_timeout, k_timeout_t inter_finger_sleep)
 {
     int image_count = 3;
     if (start_transaction(dev, image_count * 3 + 2, K_NO_WAIT))
@@ -578,7 +578,7 @@ static int user_enroll_finger(const struct device *dev, k_timeout_t op_timeout, 
     complete_command(dev);
 
     LOG_DBG("Storing template");
-    _store_template(dev, 0, 1, op_timeout);
+    _store_template(dev, 0, id, op_timeout);
     start_command(dev, op_timeout);
     if (conf->status < 0)
     {

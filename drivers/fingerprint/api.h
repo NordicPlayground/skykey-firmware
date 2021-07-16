@@ -66,7 +66,7 @@ typedef enum
     FP_LED_FADE_OUT = 6,
 } fp_led_behaviour;
 
-typedef int (*enroll_finger_t)(const struct device *dev, k_timeout_t op_timeout, k_timeout_t finger_timeout, k_timeout_t inter_finger_sleep);
+typedef int (*enroll_finger_t)(const struct device *dev, uint16_t id, k_timeout_t op_timeout, k_timeout_t finger_timeout, k_timeout_t inter_finger_sleep);
 typedef int (*verify_finger_t)(const struct device *dev, k_timeout_t op_timeout, k_timeout_t finger_timeout);
 
 struct fingerprint_api
@@ -82,10 +82,10 @@ struct fingerprint_api
  * @param dev Fingerprint sensor device
  * @return 0 on success, -EBUSY if device is not available.
  */
-static inline int enroll_finger(const struct device *dev, k_timeout_t op_timeout, k_timeout_t finger_timeout, k_timeout_t inter_finger_sleep)
+static inline int enroll_finger(const struct device *dev, uint16_t id, k_timeout_t op_timeout, k_timeout_t finger_timeout, k_timeout_t inter_finger_sleep)
 {
     struct fingerprint_api *api = (struct fingerprint_api *)dev->api;
-    return api->enroll_finger(dev, op_timeout, finger_timeout, inter_finger_sleep);
+    return api->enroll_finger(dev, id, op_timeout, finger_timeout, inter_finger_sleep);
 }
 
 /**
