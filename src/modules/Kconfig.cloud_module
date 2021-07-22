@@ -1,0 +1,14 @@
+
+menuconfig CLOUD_MODULE
+    bool "Enable cloud module"
+    default y
+    help
+        Enables cloud module.
+    
+    if CLOUD_MODULE
+
+    module = CLOUD_MODULE
+    module-str = Cloud module
+    source "subsys/logging/Kconfig.template.log_config"
+    endif
+
