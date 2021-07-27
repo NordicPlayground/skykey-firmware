@@ -14,4 +14,8 @@ config DISPLAY_EVENTS_LOG
 	bool "Enable logging for display module events"
 	default y
 
+config CLOUD_EVENTS_LOG
+	bool "Enable logging for cloud module events"
+	default y
+
 endif

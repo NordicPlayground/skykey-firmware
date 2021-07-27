@@ -6,9 +6,18 @@ menuconfig CLOUD_MODULE
         Enables cloud module.
     
     if CLOUD_MODULE
+        config CLOUD_THREAD_STACK_SIZE
+        int "Display module thread stack size"
+        default 2560
 
-    module = CLOUD_MODULE
-    module-str = Cloud module
-    source "subsys/logging/Kconfig.template.log_config"
+        config CLOUD_CONNECT_RETRIES
+        int "Cloud connection retries"
+        default 16
+        help
+          Maximum number of cloud connection retries.
+
+        module = CLOUD_MODULE
+        module-str = Cloud module
+        source "subsys/logging/Kconfig.template.log_config"
     endif
 
