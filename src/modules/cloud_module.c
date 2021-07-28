@@ -13,6 +13,7 @@
 #include <modem/at_notif.h>
 #include <modem/modem_info.h>
 #include <nrf_modem.h>
+#include <date_time.h>
 #include <cJSON.h>
 #include <cJSON_os.h>
 
@@ -36,12 +37,12 @@ struct cloud_msg_data
 /* Cloud module super states. */
 static enum state_type { STATE_LTE_DISCONNECTED,
 						 STATE_LTE_CONNECTED,
-						 STATE_SHUTDOWN
+						 STATE_SHUTDOWN,
 } state;
 
 /* Cloud module sub states. */
 static enum sub_state_type { SUB_STATE_CLOUD_DISCONNECTED,
-							 SUB_STATE_CLOUD_CONNECTED
+							 SUB_STATE_CLOUD_CONNECTED,
 } sub_state;
 
 /* Keeps track of connection retries.*/
@@ -53,9 +54,6 @@ static int connection_retries = 0;
 
 K_MSGQ_DEFINE(msgq_cloud, sizeof(struct cloud_msg_data),
 			  CLOUD_QUEUE_ENTRY_COUNT, CLOUD_QUEUE_BYTE_ALIGNMENT);
-
-/* Work item used to check if a cloud connection is established. */
-static struct k_work_delayable connect_check_work;
 
 static struct module_data self = {
 	.name = "cloud",
@@ -122,6 +120,33 @@ static void sub_state_set(enum sub_state_type new_state)
 	sub_state = new_state;
 }
 
+//========================================================================================
+/*                                                                                      *
+ *                               AWS related functionality                              *
+ *                                                                                      */
+//========================================================================================
+
+// TODO: Find a better way to check for topics + remove hardcoded ID.
+#define AWS_IOT_TOPIC_SHADOW_UPDATE_DELTA "$aws/things/352656109498066/shadow/update/delta"
+
+/**
+ * @brief State of device as reported to the cloud service. 
+ * Should match the expected format. 
+ */
+struct device_state
+{
+	int value;
+};
+
+/**
+ * @brief Work item used to check if a cloud connection is established.
+ */
+static struct k_work_delayable connect_check_work;
+
+/**
+ * @brief Initialize connection to AWS
+ * 
+ */
 static void connect_aws(void)
 {
 	int err;
@@ -146,6 +171,94 @@ static void connect_aws(void)
 	k_work_reschedule(&connect_check_work, K_SECONDS(backoff_sec));
 }
 
+/**
+ * @brief Convenience macro for deleting root and returning an error on NULL.
+ */
+#define NOT_NULL(expression, root, error) \
+	if (expression == NULL)               \
+	{                                     \
+		cJSON_Delete(root);               \
+		return -ENOMEM;                   \
+	}
+
+/**
+ * @brief Updates AWS device shadow.
+ * 
+ * @param delta Desired state delta.
+ * @param timestamp Timestamp of delta. 
+ * @return 0 on success, negative errno on error.
+ */
+static int update_shadow(struct device_state delta, uint64_t timestamp)
+{
+	static uint64_t last_handled_shadow = 0; // Timestamp of last accepted shadow.
+	if (timestamp < last_handled_shadow)
+	{
+		// More recent shadow received. Do nothing.
+		return 0;
+	}
+	last_handled_shadow = timestamp;
+
+	cJSON *root = cJSON_CreateObject();
+	NOT_NULL(root, root, -ENOMEM);
+	cJSON *state = cJSON_AddObjectToObject(root, "state");
+	NOT_NULL(state, root, -ENOMEM);
+	cJSON *reported = cJSON_AddObjectToObject(state, "reported");
+	NOT_NULL(reported, root, -ENOMEM);
+
+	int64_t msg_ts = 0; // Timestamp for shadow update.
+	int16_t batv = 0;	// Battery voltage
+
+	if (!date_time_now(&msg_ts))
+	{
+		NOT_NULL(cJSON_AddNumberToObject(reported, "ts", msg_ts), root, -ENOMEM);
+	}
+	else
+		LOG_WRN("Could not get timestamp.");
+
+	if (modem_info_short_get(MODEM_INFO_BATTERY, &batv) == sizeof(batv))
+	{
+		NOT_NULL(cJSON_AddNumberToObject(reported, "batv", batv), root, -ENOMEM);
+	}
+	else
+		LOG_WRN("Could not get battery voltage.");
+
+	NOT_NULL(cJSON_AddNumberToObject(reported, "value", delta.value), root, -ENOMEM);
+
+	char *message = cJSON_Print(root);
+	NOT_NULL(message, root, -ENOMEM);
+
+	struct aws_iot_data tx_data = {
+		.qos = MQTT_QOS_0_AT_MOST_ONCE,
+		.topic.type = AWS_IOT_SHADOW_TOPIC_UPDATE,
+		.ptr = message,
+		.len = strlen(message)};
+
+	LOG_DBG("Updating shadow");
+	int err = aws_iot_send(&tx_data);
+
+	cJSON_free(message);
+	cJSON_Delete(root);
+
+	return err;
+}
+#undef NOT_NULL
+
+static void handle_cloud_data(const struct aws_iot_data *msg)
+{
+	if (!strcmp(msg->topic.str, AWS_IOT_TOPIC_SHADOW_UPDATE_DELTA))
+	{
+		cJSON *json = cJSON_Parse(msg->ptr);
+		cJSON *state = cJSON_GetObjectItemCaseSensitive(json, "state");
+		cJSON *value = cJSON_GetObjectItemCaseSensitive(state, "value");
+		cJSON *timestamp_obj = cJSON_GetObjectItemCaseSensitive(json, "timestamp");
+		struct device_state delta;
+		int64_t timestamp = timestamp_obj->valueint;
+		delta.value = value->valueint;
+		cJSON_Delete(json);
+		update_shadow(delta, timestamp);
+	}
+}
+
 /* If this work is executed, it means that the connection attempt was not
  * successful before the backoff timer expired. A timeout message is then
  * added to the message queue to signal the timeout.
@@ -164,40 +277,12 @@ static void connect_check_work_fn(struct k_work *work)
 	SEND_EVENT(cloud, CLOUD_EVT_CONNECTION_TIMEOUT);
 }
 
-static void aws_iot_evt_handler(const struct aws_iot_evt *event)
-{
-	switch (event->type)
-	{
-	case AWS_IOT_EVT_CONNECTING:
-	{
-		LOG_DBG("Connecting to AWS");
-		SEND_EVENT(cloud, CLOUD_EVT_CONNECTING);
-		break;
-	}
-	case AWS_IOT_EVT_CONNECTED:
-	{
-		LOG_DBG("Connected to AWS");
-		sub_state_set(SUB_STATE_CLOUD_CONNECTED);
-		break;
-	}
-	case AWS_IOT_EVT_DISCONNECTED:
-	{
-		LOG_DBG("Disconnected from AWS");
-		sub_state_set(SUB_STATE_CLOUD_DISCONNECTED);
-		break;
-	}
-	case AWS_IOT_EVT_DATA_RECEIVED: {
-		LOG_DBG("Data recieved on topic %s",log_strdup(event->data.msg.topic.str));
-		event->data.msg.ptr[event->data.msg.len] = 0;
-		LOG_DBG("Message %s",log_strdup(event->data.msg.ptr));
-		break;
-	}
-	default:
-		LOG_WRN("Unknown AWS event type %d", event->type);
-		break;
-	}
-	return;
-}
+//========================================================================================
+/*                                                                                      *
+ *                                    State handlers/                                   *
+ *                                 transition functions                                 *
+ *                                                                                      */
+//========================================================================================
 
 /* Message handler for STATE_LTE_CONNECTED. */
 static void on_state_lte_connected(struct cloud_msg_data *msg)
@@ -266,6 +351,51 @@ static void on_all_states(struct cloud_msg_data *msg)
 	return;
 }
 
+//========================================================================================
+/*                                                                                      *
+ *                                    Event handlers                                    *
+ *                                                                                      */
+//========================================================================================
+
+/**
+ * @brief Event manager event handler
+ * 
+ * @param eh Event header
+ * @return true 
+ * @return false 
+ */
+static bool event_handler(const struct event_header *eh)
+{
+	struct cloud_msg_data msg = {0};
+	bool enqueue_msg = false;
+
+	if (is_cloud_module_event(eh))
+	{
+		struct cloud_module_event *evt = cast_cloud_module_event(eh);
+
+		msg.module.cloud = *evt;
+		enqueue_msg = true;
+	}
+
+	if (enqueue_msg)
+	{
+		int err = module_enqueue_msg(&self, &msg);
+
+		if (err)
+		{
+			LOG_ERR("Message could not be enqueued");
+			SEND_ERROR(cloud, CLOUD_EVT_ERROR, err);
+		}
+	}
+
+	return false;
+}
+
+/**
+ * @brief LTE event handler
+ * 
+ * @param evt Event
+ */
 static void lte_handler(const struct lte_lc_evt *evt)
 {
 	switch (evt->type)
@@ -314,20 +444,106 @@ static void lte_handler(const struct lte_lc_evt *evt)
 	}
 }
 
+/**
+ * @brief AWS iot event handler.
+ * 
+ * @param evt Event
+ */
+static void aws_iot_evt_handler(const struct aws_iot_evt *evt)
+{
+	switch (evt->type)
+	{
+	case AWS_IOT_EVT_CONNECTING:
+	{
+		LOG_DBG("Connecting to AWS");
+		SEND_EVENT(cloud, CLOUD_EVT_CONNECTING);
+		break;
+	}
+	case AWS_IOT_EVT_CONNECTED:
+	{
+		LOG_DBG("Connected to AWS");
+		sub_state_set(SUB_STATE_CLOUD_CONNECTED);
+		break;
+	}
+	case AWS_IOT_EVT_DISCONNECTED:
+	{
+		LOG_DBG("Disconnected from AWS");
+		sub_state_set(SUB_STATE_CLOUD_DISCONNECTED);
+		break;
+	}
+	case AWS_IOT_EVT_READY:
+	{
+		LOG_DBG("AWS ready");
+		break;
+	}
+	case AWS_IOT_EVT_DATA_RECEIVED:
+	{
+		LOG_DBG("Data recieved on topic %s", log_strdup(evt->data.msg.topic.str));
+		LOG_DBG("Message %s", log_strdup(evt->data.msg.ptr));
+		handle_cloud_data(&evt->data.msg);
+		break;
+	}
+	default:
+		LOG_WRN("Unknown AWS event type %d", evt->type);
+		break;
+	}
+	return;
+}
+
+//========================================================================================
+/*                                                                                      *
+ *                                  Setup/configuration                                 *
+ *                                                                                      */
+//========================================================================================
+
+/**
+ * @brief Configures modem and initializes LTE connection.
+ * 
+ * @return int 0 on success, negative errno code on failure.
+ */
 static int modem_configure(void)
 {
 	int err;
-
+	state_set(STATE_LTE_DISCONNECTED);
 	err = lte_lc_init_and_connect_async(lte_handler);
 	if (err)
 	{
 		LOG_ERR("Modem could not be configured, error: %d", err);
-		return -ENETUNREACH;
+		return err;
 	}
+	err = modem_info_init();
+	if (err) {
+		LOG_ERR("Modem info could not be initialized: %d", err);
+		return err;
+	}
+
 
 	return 0;
 }
 
+/**
+ * @brief Initializes cloud related resources.
+ * 
+ * @return int 0 on success, negative errno code on failure.
+ */
+static int cloud_configure(void)
+{
+	sub_state_set(SUB_STATE_CLOUD_DISCONNECTED);
+	int err = aws_iot_init(NULL, aws_iot_evt_handler);
+	if (err)
+	{
+		LOG_ERR("aws_iot_init, error: %d", err);
+		return err;
+	}
+	k_work_init_delayable(&connect_check_work, connect_check_work_fn);
+	return 0;
+}
+
+/**
+ * @brief Setup function for the module. Initializes modem and AWS connection.
+ * 
+ * @return int 0 on success, negative errno code on failure.
+ */
 static int setup(void)
 {
 	int err;
@@ -337,15 +553,21 @@ static int setup(void)
 		LOG_ERR("modem_configure, error: %d", err);
 		return err;
 	}
-	err = aws_iot_init(NULL, aws_iot_evt_handler);
+	err = cloud_configure();
 	if (err)
 	{
-		LOG_ERR("aws_iot_init, error: %d", err);
+		LOG_ERR("cloud_configure, error: %d", err);
 		return err;
 	}
 
 	return 0;
 }
+
+//========================================================================================
+/*                                                                                      *
+ *                                     Module thread                                    *
+ *                                                                                      */
+//========================================================================================
 
 static void module_thread_fn(void)
 {
@@ -360,11 +582,6 @@ static void module_thread_fn(void)
 		LOG_ERR("Failed starting module, error: %d", err);
 		SEND_ERROR(cloud, CLOUD_EVT_ERROR, err);
 	}
-
-	state_set(STATE_LTE_DISCONNECTED);
-	sub_state_set(SUB_STATE_CLOUD_DISCONNECTED);
-
-	k_work_init_delayable(&connect_check_work, connect_check_work_fn);
 
 	err = setup();
 	if (err)
@@ -407,34 +624,6 @@ static void module_thread_fn(void)
 
 		on_all_states(&msg);
 	}
-}
-
-/* Handles Event Manager events */
-static bool event_handler(const struct event_header *eh)
-{
-	struct cloud_msg_data msg = {0};
-	bool enqueue_msg = false;
-
-	if (is_cloud_module_event(eh))
-	{
-		struct cloud_module_event *evt = cast_cloud_module_event(eh);
-
-		msg.module.cloud = *evt;
-		enqueue_msg = true;
-	}
-
-	if (enqueue_msg)
-	{
-		int err = module_enqueue_msg(&self, &msg);
-
-		if (err)
-		{
-			LOG_ERR("Message could not be enqueued");
-			SEND_ERROR(cloud, CLOUD_EVT_ERROR, err);
-		}
-	}
-
-	return false;
 }
 
 K_THREAD_DEFINE(cloud_module_thread, CONFIG_CLOUD_THREAD_STACK_SIZE,
