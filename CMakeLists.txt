@@ -11,6 +11,10 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE ZDebug)
 endif()
 
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+
 if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}")
   message(FATAL_ERROR
           "Board ${BOARD} is not supported.\n"
