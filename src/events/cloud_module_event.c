@@ -10,7 +10,8 @@
 
 static char *get_evt_type_str(enum cloud_module_event_type type)
 {
-	switch (type) {
+	switch (type)
+	{
 	case CLOUD_EVT_CONNECTED:
 		return "CLOUD_EVT_CONNECTED";
 	case CLOUD_EVT_DISCONNECTED:
@@ -31,13 +32,19 @@ static char *get_evt_type_str(enum cloud_module_event_type type)
 		return "CLOUD_EVT_FOTA_DONE";
 	case CLOUD_EVT_ERROR:
 		return "CLOUD_EVT_ERROR";
+	case CLOUD_EVT_LTE_CONNECTED:
+		return "CLOUD_EVT_LTE_CONNECTED";
+	case CLOUD_EVT_LTE_DISCONNECTED:
+		return "CLOUD_EVT_LTE_DISCONNECTED";
+	case CLOUD_EVT_DATABASE_UPDATE_AVAILABLE:
+		return "CLOUD_EVT_DATABASE_UPDATE_AVAILABLE";
 	default:
 		return "Unknown event";
 	}
 }
 
 static int log_event(const struct event_header *eh, char *buf,
-		     size_t buf_len)
+					 size_t buf_len)
 {
 	const struct cloud_module_event *event = cast_cloud_module_event(eh);
 
@@ -47,13 +54,13 @@ static int log_event(const struct event_header *eh, char *buf,
 #if defined(CONFIG_PROFILER)
 
 static void profile_event(struct log_event_buf *buf,
-			 const struct event_header *eh)
+						  const struct event_header *eh)
 {
 	const struct cloud_module_event *event = cast_cloud_module_event(eh);
 
 #if defined(CONFIG_PROFILER_EVENT_TYPE_STRING)
 	profiler_log_encode_string(buf, get_evt_type_str(event->type),
-		strlen(get_evt_type_str(event->type)));
+							   strlen(get_evt_type_str(event->type)));
 #else
 	profiler_log_encode_u32(buf, event->type);
 #endif
@@ -61,20 +68,20 @@ static void profile_event(struct log_event_buf *buf,
 
 EVENT_INFO_DEFINE(cloud_module_event,
 #if defined(CONFIG_PROFILER_EVENT_TYPE_STRING)
-		  ENCODE(PROFILER_ARG_STRING),
+				  ENCODE(PROFILER_ARG_STRING),
 #else
-		  ENCODE(PROFILER_ARG_U32),
+				  ENCODE(PROFILER_ARG_U32),
 #endif
-		  ENCODE("type"),
-		  profile_event);
+				  ENCODE("type"),
+				  profile_event);
 
 #endif /* CONFIG_PROFILER */
 
 EVENT_TYPE_DEFINE(cloud_module_event,
-		  CONFIG_CLOUD_EVENTS_LOG,
-		  log_event,
+				  CONFIG_CLOUD_EVENTS_LOG,
+				  log_event,
 #if defined(CONFIG_PROFILER)
-		  &cloud_module_event_info);
+				  &cloud_module_event_info);
 #else
-		  NULL);
+				  NULL);
 #endif

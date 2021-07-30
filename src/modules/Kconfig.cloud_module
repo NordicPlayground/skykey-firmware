@@ -1,4 +1,5 @@
 
+# TODO: Set up proper select and/or depends on clauses
 menuconfig CLOUD_MODULE
     bool "Enable cloud module"
     default y
@@ -7,7 +8,7 @@ menuconfig CLOUD_MODULE
     
     if CLOUD_MODULE
         config CLOUD_THREAD_STACK_SIZE
-        int "Display module thread stack size"
+        int "Cloud module thread stack size"
         default 2560
 
         config CLOUD_CONNECT_RETRIES
@@ -15,6 +16,7 @@ menuconfig CLOUD_MODULE
         default 16
         help
           Maximum number of cloud connection retries.
+
 
         module = CLOUD_MODULE
         module-str = Cloud module
