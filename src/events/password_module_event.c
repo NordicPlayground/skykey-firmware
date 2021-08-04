@@ -29,7 +29,7 @@ static int log_event(const struct event_header *eh, char *buf,
 	switch (event->type)
 	{
 	case PASSWORD_EVT_REQ_DOWNLOAD:
-		return snprintf(buf, buf_len, "%s: URL: %s", get_evt_type_str(event->type), event->dyndata.data);
+		return snprintf(buf, buf_len, "%s: URL: %s", get_evt_type_str(event->type), event->data.download_params.url);
 	default:
 		return snprintf(buf, buf_len, "%s", get_evt_type_str(event->type));
 	}

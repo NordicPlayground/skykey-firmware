@@ -41,8 +41,8 @@ extern "C"
     struct password_req_download_params {
         int64_t version;
 		password_download_cb_t callback;
+		char url[50];
     }; 
-
 
 	/** @brief Password event. */
 	struct password_module_event
@@ -58,10 +58,9 @@ extern "C"
 		} data;
 
 		enum password_module_event_type type;
-		struct event_dyndata dyndata;
 	};
 
-	EVENT_TYPE_DYNDATA_DECLARE(password_module_event);
+	EVENT_TYPE_DECLARE(password_module_event);
 
 #ifdef __cplusplus
 }

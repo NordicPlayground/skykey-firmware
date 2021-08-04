@@ -165,6 +165,7 @@ static void dl_state_set(enum download_state_type new_state)
 
 // TODO: Find a better way to check for topics + remove hardcoded ID.
 #define AWS_IOT_TOPIC_SHADOW_UPDATE_DELTA "$aws/things/352656109498066/shadow/update/delta"
+#define AWS_IOT_TOPIC_SHADOW_GET_ACCEPTED "$aws/things/352656109498066/shadow/get/accepted"
 
 /**
  * @brief Work item used to check if a cloud connection is established.
@@ -198,7 +199,7 @@ static void connect_aws(void)
 	if (connection_retries > CONFIG_CLOUD_CONNECT_RETRIES)
 	{
 		LOG_WRN("Too many failed connection attempts");
-		SEND_DYN_ERROR(cloud, CLOUD_EVT_ERROR, -ENETUNREACH);
+		SEND_ERROR(cloud, CLOUD_EVT_ERROR, -ENETUNREACH);
 		return;
 	}
 
@@ -274,7 +275,8 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 
 	// TODO: Consider using AWS IoT Jobs instead of device shadow for updating database.
 	//This is a temporary solution for testing the downloading mechanism.
-	cJSON *pwd_obj = cJSON_GetObjectItemCaseSensitive(delta, "pwd");
+	cJSON *delta_obj = cJSON_GetObjectItemCaseSensitive(delta, "desired");
+	cJSON *pwd_obj = cJSON_GetObjectItemCaseSensitive(delta_obj, "pwd");
 	if (pwd_obj != NULL)
 	{
 		cJSON *pwd_url_obj = cJSON_GetObjectItemCaseSensitive(pwd_obj, "url");
@@ -283,10 +285,11 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 		{
 			char *url = pwd_url_obj->valuestring;
 			int64_t version = pwd_ver_obj->valueint;
-			struct cloud_module_event *event = new_cloud_module_event(strlen(url) + 1); // +1 for null terminator.
+			struct cloud_module_event *event = new_cloud_module_event(); // +1 for null terminator.
 			event->type = CLOUD_EVT_DATABASE_UPDATE_AVAILABLE;
-			event->data.download_params.version = version;
-			strcpy(event->dyndata.data, url);
+			// event->data.download_params.version = version;
+			strcpy(event->data.url, url);
+			LOG_WRN("Sending event");
 			EVENT_SUBMIT(event);
 		}
 		cJSON_AddItemReferenceToObject(reported, "pwd", pwd_obj); // HACK: Echo password settings to remove it from delta. Again, this is not a good solution.
@@ -302,18 +305,18 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 		.len = strlen(message)};
 
 	LOG_DBG("Updating shadow");
-	int err = aws_iot_send(&tx_data);
+	// int err = aws_iot_send(&tx_data);
 
 	cJSON_free(message);
 	cJSON_Delete(root);
-
+	int err = 0;
 	return err;
 }
 #undef NOT_NULL
 
 static void handle_cloud_data(const struct aws_iot_data *msg)
 {
-	if (!strcmp(msg->topic.str, AWS_IOT_TOPIC_SHADOW_UPDATE_DELTA))
+	if (!strcmp(msg->topic.str, AWS_IOT_TOPIC_SHADOW_GET_ACCEPTED))
 	{
 		cJSON *json = cJSON_Parse(msg->ptr);
 		cJSON *state = cJSON_GetObjectItemCaseSensitive(json, "state");
@@ -340,7 +343,7 @@ static void connect_check_work_fn(struct k_work *work)
 
 	LOG_DBG("Cloud connection timeout occurred");
 
-	SEND_DYN_EVENT(cloud, CLOUD_EVT_CONNECTION_TIMEOUT);
+	SEND_EVENT(cloud, CLOUD_EVT_CONNECTION_TIMEOUT);
 }
 
 // This function might be redundant, but I sense some looming atomicity issues just around the corner.
@@ -407,6 +410,7 @@ static void on_state_lte_disconnected(struct cloud_msg_data *msg)
 		/* Update current time. */
 		date_time_update_async(NULL);
 
+		printk("Attempting to connect to AWS");
 		/* LTE is now connected, cloud connection can be attempted */
 		connect_aws();
 	}
@@ -447,23 +451,23 @@ static void on_dl_state_ready(struct cloud_msg_data *msg)
 {
 	if (IS_EVENT(msg, password, PASSWORD_EVT_REQ_DOWNLOAD))
 	{
-		char *url = msg->data;
+		//char *url = msg->data;
 		set_download_callback(msg->module.password.data.download_params.callback);
-		int err = download_client_connect(&dl_client, url, &dl_client_cfg);
+		int err = download_client_connect(&dl_client, msg->module.password.data.download_params.url, &dl_client_cfg);
 		if (err < 0)
 		{
-			SEND_DYN_ERROR(cloud, CLOUD_EVT_DOWNLOAD_ERROR, err);
+			SEND_ERROR(cloud, CLOUD_EVT_DOWNLOAD_ERROR, err);
 		}
 		else
 		{
-			err = download_client_start(&dl_client, url, 0);
+			err = download_client_start(&dl_client, msg->module.password.data.download_params.url, 0);
 			if (err < 0)
 			{
-				SEND_DYN_ERROR(cloud, CLOUD_EVT_DOWNLOAD_ERROR, err);
+				SEND_ERROR(cloud, CLOUD_EVT_DOWNLOAD_ERROR, err);
 			}
 			else
 			{
-				SEND_DYN_EVENT(cloud, CLOUD_EVT_DOWNLOAD_STARTED);
+				SEND_EVENT(cloud, CLOUD_EVT_DOWNLOAD_STARTED);
 				dl_state_set(DOWNLOAD_STATE_BUSY);
 			}
 		}
@@ -502,24 +506,14 @@ static bool event_handler(const struct event_header *eh)
 	{
 		LOG_DBG("Cloud event recieved.");
 		struct cloud_module_event *evt = cast_cloud_module_event(eh);
-		if (evt->dyndata.size > 0)
-		{
-			msg.module.cloud = *evt;
-			msg.data = k_malloc(evt->dyndata.size);
-			memcpy(msg.data, evt->dyndata.data, evt->dyndata.size);
-		}
+		msg.module.cloud = *evt;
 		enqueue_msg = true;
 	}
 
 	if (is_password_module_event(eh))
 	{
 		struct password_module_event *evt = cast_password_module_event(eh);
-		if (evt->dyndata.size > 0)
-		{
-			msg.module.password = *evt;
-			msg.data = k_malloc(evt->dyndata.size);
-			memcpy(msg.data, evt->dyndata.data, evt->dyndata.size);
-		}
+		msg.module.password = *evt;
 		enqueue_msg = true;
 	}
 
@@ -530,7 +524,7 @@ static bool event_handler(const struct event_header *eh)
 		if (err)
 		{
 			LOG_ERR("Message could not be enqueued");
-			SEND_DYN_ERROR(cloud, CLOUD_EVT_ERROR, err);
+			SEND_ERROR(cloud, CLOUD_EVT_ERROR, err);
 		}
 	}
 
@@ -552,14 +546,14 @@ static void lte_handler(const struct lte_lc_evt *evt)
 		if ((evt->nw_reg_status != LTE_LC_NW_REG_REGISTERED_HOME) &&
 			(evt->nw_reg_status != LTE_LC_NW_REG_REGISTERED_ROAMING))
 		{
-			SEND_DYN_EVENT(cloud, CLOUD_EVT_LTE_DISCONNECTED);
+			SEND_EVENT(cloud, CLOUD_EVT_LTE_DISCONNECTED);
 			break;
 		}
 
 		LOG_DBG("Network registration status: %s",
 				evt->nw_reg_status == LTE_LC_NW_REG_REGISTERED_HOME ? "Connected - home network" : "Connected - roaming");
 
-		SEND_DYN_EVENT(cloud, CLOUD_EVT_LTE_CONNECTED);
+		SEND_EVENT(cloud, CLOUD_EVT_LTE_CONNECTED);
 		break;
 	}
 	case LTE_LC_EVT_PSM_UPDATE:
@@ -605,7 +599,7 @@ static void aws_iot_evt_handler(const struct aws_iot_evt *evt)
 	case AWS_IOT_EVT_CONNECTING:
 	{
 		LOG_DBG("Connecting to AWS");
-		SEND_DYN_EVENT(cloud, CLOUD_EVT_CONNECTING);
+		SEND_EVENT(cloud, CLOUD_EVT_CONNECTING);
 		break;
 	}
 	case AWS_IOT_EVT_CONNECTED:
@@ -653,13 +647,13 @@ static int download_client_callback(const struct download_client_evt *evt)
 	}
 	case DOWNLOAD_CLIENT_EVT_DONE:
 	{
-		SEND_DYN_EVENT(cloud, CLOUD_EVT_DOWNLOAD_FINISHED);
+		SEND_EVENT(cloud, CLOUD_EVT_DOWNLOAD_FINISHED);
 		LOG_DBG("Download complete");
 		break;
 	}
 	case DOWNLOAD_CLIENT_EVT_ERROR:
 	{
-		SEND_DYN_ERROR(cloud, CLOUD_EVT_DOWNLOAD_ERROR, evt->error);
+		SEND_ERROR(cloud, CLOUD_EVT_DOWNLOAD_ERROR, evt->error);
 		LOG_WRN("An error occured while downloading: %d", evt->error);
 		break;
 	}
@@ -758,14 +752,14 @@ static void module_thread_fn(void)
 	if (err)
 	{
 		LOG_ERR("Failed starting module, error: %d", err);
-		SEND_DYN_ERROR(cloud, CLOUD_EVT_ERROR, err);
+		SEND_ERROR(cloud, CLOUD_EVT_ERROR, err);
 	}
 
 	err = setup();
 	if (err)
 	{
 		LOG_ERR("setup, error %d", err);
-		SEND_DYN_ERROR(cloud, CLOUD_EVT_ERROR, err);
+		SEND_ERROR(cloud, CLOUD_EVT_ERROR, err);
 	}
 	while (true)
 	{
@@ -799,7 +793,6 @@ static void module_thread_fn(void)
 			on_state_lte_connected(&msg);
 			break;
 		case STATE_LTE_DISCONNECTED:
-			printk("Handle msg for state LTE disconnected");
 			on_state_lte_disconnected(&msg);
 			break;
 		case STATE_SHUTDOWN:

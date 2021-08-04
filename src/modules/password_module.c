@@ -25,7 +25,6 @@ struct password_msg_data
         struct password_module_event password;
         struct cloud_module_event cloud;
     } module;
-    void *data;
 };
 
 static enum { PASSWORD_STATE_DOWNLOADING,
@@ -68,12 +67,15 @@ static void on_state_free(struct password_msg_data *msg)
 {
     if (IS_EVENT(msg, cloud, CLOUD_EVT_DATABASE_UPDATE_AVAILABLE))
     {
+
+        LOG_WRN("%s", log_strdup(msg->module.cloud.data.url));
         struct cloud_module_event c_evt = msg->module.cloud;
-        struct password_module_event *evt = new_password_module_event(c_evt.dyndata.size);
+        struct password_module_event *evt = new_password_module_event();
         evt->type = PASSWORD_EVT_REQ_DOWNLOAD;
+        strcpy(evt->data.download_params.url, msg->module.cloud.data.url);
         evt->data.download_params.version = c_evt.data.download_params.version;
         evt->data.download_params.callback = handle_file_fragment;
-        strcpy(evt->dyndata.data, msg->data);
+        //strcpy(evt->dyndata.data, msg->data);
         EVENT_SUBMIT(evt);
     }
 }
@@ -112,19 +114,14 @@ static bool event_handler(const struct event_header *eh)
         struct password_module_event *evt = cast_password_module_event(eh);
 
         msg.module.password = *evt;
-        msg.data = NULL;
         enqueue_msg = true;
     }
 
     if (is_cloud_module_event(eh))
     {
         struct cloud_module_event *evt = cast_cloud_module_event(eh);
-        if (evt->dyndata.size > 0)
-        {
-            msg.module.cloud = *evt;
-            msg.data = k_malloc(evt->dyndata.size);
-            memcpy(msg.data, evt->dyndata.data, evt->dyndata.size);
-        }
+
+        msg.module.cloud = *evt;
         enqueue_msg = true;
     }
 
@@ -135,7 +132,7 @@ static bool event_handler(const struct event_header *eh)
         if (err)
         {
             LOG_ERR("Message could not be enqueued");
-            SEND_DYN_ERROR(password, PASSWORD_EVT_ERROR, err);
+            SEND_ERROR(password, PASSWORD_EVT_ERROR, err);
         }
     }
 
@@ -178,14 +175,14 @@ static void module_thread_fn(void)
     if (err)
     {
         LOG_ERR("Failed starting module, error: %d", err);
-        SEND_DYN_ERROR(password, PASSWORD_EVT_ERROR, err);
+        SEND_ERROR(password, PASSWORD_EVT_ERROR, err);
     }
 
     err = setup();
     if (err)
     {
         LOG_ERR("setup, error %d", err);
-        SEND_DYN_ERROR(password, PASSWORD_EVT_ERROR, err);
+        SEND_ERROR(password, PASSWORD_EVT_ERROR, err);
     }
     while (true)
     {
@@ -206,7 +203,7 @@ static void module_thread_fn(void)
             LOG_ERR("Unknown state %d", module_state);
         }
         on_all_states(&msg);
-        k_free(msg.data);
+        //k_free(msg.data);
     }
 }
 
