@@ -15,6 +15,8 @@ menuconfig DISPLAY_MODULE
 	select LVGL_USE_PAGE
 	select LVGL_USE_LIST
 	select LVGL_USE_GROUP
+	help
+    Enables display module.
 
 if DISPLAY_MODULE
 
