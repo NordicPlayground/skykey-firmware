@@ -36,18 +36,6 @@ extern "C"
 		CLOUD_EVT_LTE_CONNECTED,
 		CLOUD_EVT_LTE_DISCONNECTED,
 		CLOUD_EVT_DATABASE_UPDATE_AVAILABLE,
-		CLOUD_EVT_DOWNLOAD_STARTED,
-		CLOUD_EVT_DOWNLOAD_FINISHED,
-		CLOUD_EVT_DOWNLOAD_ERROR,
-	};
-
-	/**
-	 * @brief Contains parameters for file downloads.
-	 * URL is given in dyndata as a null terminated string.
-	 */
-	struct cloud_module_download_params
-	{
-		int64_t version;
 	};
 
 	struct cloud_module_event_data
@@ -71,19 +59,15 @@ extern "C"
 
 		union
 		{
-			struct cloud_module_download_params download_params;
 			/* Module ID, used when acknowledging shutdown requests. */
 			uint32_t id;
 			int err;
+			/* URL providing database location for CLOUD_EVT_DATABASE_UPDATE_AVAILABLE */
 			char url[50];
 		} data;
 
-		/* DON'T MOVE THIS! Not having anything between the data union and dyndata struct causes builds to fail.
-		My current theory is that it breaks dyndata aligment and triggers an assert that ensures that
-		the dyndata field is at the end of the struct.*/
 		enum cloud_module_event_type type;
 
-		// struct event_dyndata dyndata;
 	};
 
 	EVENT_TYPE_DECLARE(cloud_module_event);

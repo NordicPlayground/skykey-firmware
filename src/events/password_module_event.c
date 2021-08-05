@@ -13,10 +13,14 @@ static char *get_evt_type_str(enum password_module_event_type type)
 	// TODO: Implement once all event types have been defined.
 	switch (type)
 	{
-	case PASSWORD_EVT_REQ_DOWNLOAD:
-		return "PASSWORD_EVT_REQ_DOWNLOAD";
 	case PASSWORD_EVT_ERROR:
 		return "PASSWORD_EVT_ERROR";
+	case PASSWORD_EVT_DOWNLOAD_STARTED:
+		return "PASSWORD_EVT_DOWNLOAD_STARTED";
+	case PASSWORD_EVT_DOWNLOAD_FINISHED:
+		return "PASSWORD_EVT_DOWNLOAD_FINISHED";
+	case PASSWORD_EVT_DOWNLOAD_ERROR:
+		return "PASSWORD_EVT_DOWNLOAD_ERROR";
 	default:
 		return "";
 	}
@@ -26,13 +30,7 @@ static int log_event(const struct event_header *eh, char *buf,
 					 size_t buf_len)
 {
 	const struct password_module_event *event = cast_password_module_event(eh);
-	switch (event->type)
-	{
-	case PASSWORD_EVT_REQ_DOWNLOAD:
-		return snprintf(buf, buf_len, "%s: URL: %s", get_evt_type_str(event->type), event->data.download_params.url);
-	default:
-		return snprintf(buf, buf_len, "%s", get_evt_type_str(event->type));
-	}
+	return snprintf(buf, buf_len, "%s", get_evt_type_str(event->type));
 }
 
 #if defined(CONFIG_PROFILER)

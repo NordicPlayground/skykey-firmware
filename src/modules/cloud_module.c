@@ -17,7 +17,6 @@
 #include <string.h>
 #include <cJSON.h>
 #include <cJSON_os.h>
-#include <net/download_client.h>
 
 #include "events/cloud_module_event.h"
 #include "events/password_module_event.h"
@@ -50,10 +49,6 @@ static enum sub_state_type { SUB_STATE_CLOUD_DISCONNECTED,
 							 SUB_STATE_CLOUD_CONNECTED,
 } sub_state;
 
-/* Download client state. */
-static enum download_state_type { DOWNLOAD_STATE_READY,
-								  DOWNLOAD_STATE_BUSY,
-} download_state;
 
 /* Keeps track of connection retries.*/
 static int connection_retries = 0;
@@ -100,19 +95,6 @@ static char *sub_state2str(enum sub_state_type new_state)
 	}
 }
 
-static char *dl_state2str(enum download_state_type new_state)
-{
-	switch (new_state)
-	{
-	case DOWNLOAD_STATE_READY:
-		return "DOWNLOAD_STATE_READY";
-	case DOWNLOAD_STATE_BUSY:
-		return "DOWNLOAD_STATE_BUSY";
-	default:
-		return "Unknown";
-	}
-}
-
 static void state_set(enum state_type new_state)
 {
 	if (new_state == state)
@@ -143,20 +125,6 @@ static void sub_state_set(enum sub_state_type new_state)
 	sub_state = new_state;
 }
 
-static void dl_state_set(enum download_state_type new_state)
-{
-	if (new_state == download_state)
-	{
-		LOG_DBG("Download state: %s", dl_state2str(download_state));
-		return;
-	}
-
-	LOG_DBG("Download state transition: %s --> %s",
-			dl_state2str(download_state),
-			dl_state2str(new_state));
-	download_state = new_state;
-}
-
 //========================================================================================
 /*                                                                                      *
  *                               AWS related functionality                              *
@@ -171,21 +139,6 @@ static void dl_state_set(enum download_state_type new_state)
  * @brief Work item used to check if a cloud connection is established.
  */
 static struct k_work_delayable connect_check_work;
-
-static struct download_client dl_client;
-static struct download_client_cfg dl_client_cfg = {
-	.sec_tag = -1,
-	.apn = NULL,
-	.pdn_id = 0,
-	.frag_size_override = 0,
-	.set_tls_hostname = false,
-};
-
-/**
- * @brief Function for handling file fragments. 
- * Is provided by password module when requesting a download.
- */
-static password_download_cb_t download_callback = NULL;
 
 /**
  * @brief Initialize connection to AWS
@@ -284,12 +237,9 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 		if (pwd_url_obj != NULL && pwd_ver_obj != NULL)
 		{
 			char *url = pwd_url_obj->valuestring;
-			int64_t version = pwd_ver_obj->valueint;
-			struct cloud_module_event *event = new_cloud_module_event(); // +1 for null terminator.
+			struct cloud_module_event *event = new_cloud_module_event();
 			event->type = CLOUD_EVT_DATABASE_UPDATE_AVAILABLE;
-			// event->data.download_params.version = version;
 			strcpy(event->data.url, url);
-			LOG_WRN("Sending event");
 			EVENT_SUBMIT(event);
 		}
 		cJSON_AddItemReferenceToObject(reported, "pwd", pwd_obj); // HACK: Echo password settings to remove it from delta. Again, this is not a good solution.
@@ -344,36 +294,6 @@ static void connect_check_work_fn(struct k_work *work)
 	LOG_DBG("Cloud connection timeout occurred");
 
 	SEND_EVENT(cloud, CLOUD_EVT_CONNECTION_TIMEOUT);
-}
-
-// This function might be redundant, but I sense some looming atomicity issues just around the corner.
-/**
- * @brief Set the download callback.
- * 
- * @param new_cb 
- */
-static void set_download_callback(password_download_cb_t new_cb)
-{
-	download_callback = new_cb;
-}
-
-/**
- * @brief Notfies download callback about new data.
- * 
- * @param fragment Pointer to file fragment.
- * @param size Size of file fragment.
- * @param file_size Total size of file.
- * 
- * @return Negative error code if download should be canceled, 0 or positive otherwise.
- * If callback is NULL this will always return 0.
- */
-static int notify_download_callback(const void * const fragment, size_t frag_size, size_t file_size)
-{
-	if (download_callback == NULL)
-	{
-		return 0;
-	}
-	return download_callback(fragment, frag_size, file_size);
 }
 
 //========================================================================================
@@ -444,39 +364,6 @@ static void on_sub_state_cloud_disconnected(struct cloud_msg_data *msg)
 	{
 		connect_aws();
 	}
-}
-
-/* Message handler for DOWNLOAD_STATE_READY*/
-static void on_dl_state_ready(struct cloud_msg_data *msg)
-{
-	if (IS_EVENT(msg, password, PASSWORD_EVT_REQ_DOWNLOAD))
-	{
-		//char *url = msg->data;
-		set_download_callback(msg->module.password.data.download_params.callback);
-		int err = download_client_connect(&dl_client, msg->module.password.data.download_params.url, &dl_client_cfg);
-		if (err < 0)
-		{
-			SEND_ERROR(cloud, CLOUD_EVT_DOWNLOAD_ERROR, err);
-		}
-		else
-		{
-			err = download_client_start(&dl_client, msg->module.password.data.download_params.url, 0);
-			if (err < 0)
-			{
-				SEND_ERROR(cloud, CLOUD_EVT_DOWNLOAD_ERROR, err);
-			}
-			else
-			{
-				SEND_EVENT(cloud, CLOUD_EVT_DOWNLOAD_STARTED);
-				dl_state_set(DOWNLOAD_STATE_BUSY);
-			}
-		}
-	}
-}
-
-/* Message handler for DOWNLOAD_STATE_BUSY*/
-static void on_dl_state_busy(struct cloud_msg_data *msg)
-{
 }
 
 /* Message handler for all states. */
@@ -633,34 +520,6 @@ static void aws_iot_evt_handler(const struct aws_iot_evt *evt)
 	return;
 }
 
-static int download_client_callback(const struct download_client_evt *evt)
-{
-	switch (evt->id)
-	{
-	case DOWNLOAD_CLIENT_EVT_FRAGMENT:
-	{
-		LOG_DBG("Fragment recieved. Size: %d", evt->fragment.len);
-		size_t file_size;
-		download_client_file_size_get(&dl_client, &file_size);
-		notify_download_callback(evt->fragment.buf, evt->fragment.len, file_size);
-		break;
-	}
-	case DOWNLOAD_CLIENT_EVT_DONE:
-	{
-		SEND_EVENT(cloud, CLOUD_EVT_DOWNLOAD_FINISHED);
-		LOG_DBG("Download complete");
-		break;
-	}
-	case DOWNLOAD_CLIENT_EVT_ERROR:
-	{
-		SEND_ERROR(cloud, CLOUD_EVT_DOWNLOAD_ERROR, evt->error);
-		LOG_WRN("An error occured while downloading: %d", evt->error);
-		break;
-	}
-	}
-	return 0;
-}
-
 //========================================================================================
 /*                                                                                      *
  *                                  Setup/configuration                                 *
@@ -706,8 +565,6 @@ static int cloud_configure(void)
 		return err;
 	}
 	k_work_init_delayable(&connect_check_work, connect_check_work_fn);
-	download_client_init(&dl_client, download_client_callback);
-	dl_state_set(DOWNLOAD_STATE_READY);
 	return 0;
 }
 
@@ -780,16 +637,6 @@ static void module_thread_fn(void)
 				LOG_ERR("Unknown Cloud module sub state");
 				break;
 			}
-
-			switch (download_state)
-			{
-			case DOWNLOAD_STATE_READY:
-				on_dl_state_ready(&msg);
-				break;
-			case DOWNLOAD_STATE_BUSY:
-				on_dl_state_busy(&msg);
-				break;
-			}
 			on_state_lte_connected(&msg);
 			break;
 		case STATE_LTE_DISCONNECTED:
@@ -804,7 +651,6 @@ static void module_thread_fn(void)
 		}
 
 		on_all_states(&msg);
-		k_free(msg.data); // Free dynamic data
 	}
 }
 

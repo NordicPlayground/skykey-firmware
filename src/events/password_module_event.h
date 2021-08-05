@@ -25,24 +25,10 @@ extern "C"
 	{
 		PASSWORD_EVT_REQ_DOWNLOAD,
 		PASSWORD_EVT_ERROR,
+		PASSWORD_EVT_DOWNLOAD_STARTED,
+		PASSWORD_EVT_DOWNLOAD_FINISHED,
+		PASSWORD_EVT_DOWNLOAD_ERROR,
 	};
-
-	/**
-	 * @brief Callback for handling downloaded file fragments.
-	 * 
-	 * @param data Pointer to file fragment.
-	 * @param frag_size Size of current fragment.
-	 * @param file_size Total size of file being downloaded.
-	 * 
-	 * @return Negative error code when download should be cancelled, 0 or positive otherwise.
-	 */
-	typedef int (*password_download_cb_t)(const void* const data, size_t frag_size, size_t file_size);
-
-    struct password_req_download_params {
-        int64_t version;
-		password_download_cb_t callback;
-		char url[50];
-    }; 
 
 	/** @brief Password event. */
 	struct password_module_event
@@ -51,7 +37,6 @@ extern "C"
 
 		union
 		{
-            struct password_req_download_params download_params;
 			/* Module ID, used when acknowledging shutdown requests. */
 			uint32_t id;
 			int err;
