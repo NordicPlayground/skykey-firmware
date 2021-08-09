@@ -21,6 +21,8 @@ static char *get_evt_type_str(enum password_module_event_type type)
 		return "PASSWORD_EVT_DOWNLOAD_FINISHED";
 	case PASSWORD_EVT_DOWNLOAD_ERROR:
 		return "PASSWORD_EVT_DOWNLOAD_ERROR";
+	case PASSWORD_EVT_FLASH_ERROR:
+		return "PASSWORD_EVT_FLASH_ERROR";
 	default:
 		return "";
 	}
@@ -30,7 +32,13 @@ static int log_event(const struct event_header *eh, char *buf,
 					 size_t buf_len)
 {
 	const struct password_module_event *event = cast_password_module_event(eh);
-	return snprintf(buf, buf_len, "%s", get_evt_type_str(event->type));
+	switch (event->type)
+	{
+	case PASSWORD_EVT_DOWNLOAD_FINISHED:
+		return snprintf(buf, buf_len, "%s: Platforms: %s", get_evt_type_str(event->type), event->dyndata.data);
+	default:
+		return snprintf(buf, buf_len, "%s", get_evt_type_str(event->type));
+	}
 }
 
 #if defined(CONFIG_PROFILER)

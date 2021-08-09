@@ -28,6 +28,7 @@ extern "C"
 		PASSWORD_EVT_DOWNLOAD_STARTED,
 		PASSWORD_EVT_DOWNLOAD_FINISHED,
 		PASSWORD_EVT_DOWNLOAD_ERROR,
+		PASSWORD_EVT_FLASH_ERROR,
 	};
 
 	/** @brief Password event. */
@@ -43,9 +44,10 @@ extern "C"
 		} data;
 
 		enum password_module_event_type type;
+		struct event_dyndata dyndata;
 	};
 
-	EVENT_TYPE_DECLARE(password_module_event);
+	EVENT_TYPE_DYNDATA_DECLARE(password_module_event);
 
 #ifdef __cplusplus
 }

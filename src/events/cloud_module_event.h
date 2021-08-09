@@ -62,15 +62,16 @@ extern "C"
 			/* Module ID, used when acknowledging shutdown requests. */
 			uint32_t id;
 			int err;
-			/* URL providing database location for CLOUD_EVT_DATABASE_UPDATE_AVAILABLE */
-			char url[50];
 		} data;
-
+		/* DON'T MOVE THIS! Not having anything between the data union and dyndata struct causes builds to fail.
+		My current theory is that it breaks dyndata aligment and triggers an assert that ensures that
+		the dyndata field is at the end of the struct.*/
 		enum cloud_module_event_type type;
 
+		struct event_dyndata dyndata;
 	};
 
-	EVENT_TYPE_DECLARE(cloud_module_event);
+	EVENT_TYPE_DYNDATA_DECLARE(cloud_module_event);
 
 #ifdef __cplusplus
 }
