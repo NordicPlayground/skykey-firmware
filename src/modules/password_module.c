@@ -6,10 +6,17 @@
 
 #include <zephyr.h>
 #include <event_manager.h>
+#include <zephyr/types.h>
 #include <string.h>
 #include <stdlib.h>
 #include <device.h>
+
 #include <net/download_client.h>
+
+#include <drivers/flash.h>
+#include <settings/settings.h>
+#include <storage/stream_flash.h>
+
 
 #include "events/password_module_event.h"
 #include "events/cloud_module_event.h"
@@ -104,17 +111,67 @@ static int download_connect_and_start(const char* url)
 	return err;
 }
 
+//========================================================================================
+/*                                                                                      *
+ *                                    Stream flash                                      *
+ *                                                                                      */
+//========================================================================================
+
+#define STORAGE_NODE DT_NODE_BY_FIXED_PARTITION_LABEL(storage)
+#define FLASH_NAME DT_CHOSEN_ZEPHYR_FLASH_CONTROLLER_LABEL
+
+
+#define BUF_LEN CONFIG_DOWNLOAD_CLIENT_HTTP_FRAG_SIZE
+#define MAX_PAGE_SIZE BUF_LEN /* Buf len cannot be larger than the page size*/
+
+
+/* so that we don't overwrite the application when running on hw */
+#define FLASH_BASE DT_REG_ADDR(STORAGE_NODE)
+#define FLASH_AVAILABLE DT_REG_SIZE(STORAGE_NODE) /* Assume only pw module writes to storage node */
+
+static const struct device *fdev;
+static struct stream_flash_ctx ctx;
+
+static uint8_t buf[BUF_LEN];
+
+
+
+static int init_stream_flash(void) 
+{
+	int err = 0;
+
+	/* Ensure that target is clean */
+	memset(&ctx, 0, sizeof(ctx));
+	memset(buf, 0, BUF_LEN);
+
+	err = stream_flash_init(&ctx, fdev, buf, BUF_LEN, FLASH_BASE, 0, NULL);
+	if (err < 0) {
+		return err;
+	}
+	return err;
+}
 
 
 static int handle_file_fragment(const void * const fragment, size_t frag_size, size_t file_size)
 {
     int err; 
-	// TODO: Actually do something usefull with the file fragment.
+	
+	memcpy(buf, fragment, frag_size);
+
     static int frag_count = 0;
-    static int data_recieved = 0;
-    data_recieved += frag_size;
-    int percentage = (data_recieved * 100) / file_size;
-    LOG_DBG("Received fragment %d.\n Recieved: %d B/%d B\n  (%d%%)", frag_count++, data_recieved, file_size, percentage);
+    static int data_received = 0;
+    data_received += frag_size;
+	bool should_flush = false;
+	if (data_received == file_size) {
+		should_flush = true;
+	}
+	err = stream_flash_buffered_write(&ctx, buf, frag_size, should_flush);
+	if (err != 0) {
+		return err;
+	}
+
+    int percentage = (data_received * 100) / file_size;
+    LOG_DBG("Received fragment %d.\n Received: %d B/%d B\n  (%d%%)", frag_count++, data_received, file_size, percentage);
     return err;
 }
 
@@ -134,6 +191,9 @@ static void on_state_free(struct password_msg_data *msg)
 			SEND_DYN_ERROR(password, PASSWORD_EVT_DOWNLOAD_ERROR, err);
 			return;
 		}
+		SEND_DYN_EVENT(password, PASSWORD_EVT_DOWNLOAD_STARTED);
+
+
 	}
 }
 
@@ -157,12 +217,11 @@ static void on_all_states(struct password_msg_data *msg)
 static int download_client_callback(const struct download_client_evt *event)
 {
 	static size_t file_size;
-	size_t offset;
 	int err;
 	switch (event->id) {
 	case DOWNLOAD_CLIENT_EVT_FRAGMENT: {
 		if (first_fragment) {
-			LOG_DBG("Fragment recieved. Size: %d", event->fragment.len);
+			LOG_DBG("Fragment received. Size: %d", event->fragment.len);
 			err = download_client_file_size_get(&dl_client, &file_size);
 			if (err != 0) {
 				LOG_DBG("download_client_file_size_get err: %d", err);
@@ -176,6 +235,8 @@ static int download_client_callback(const struct download_client_evt *event)
 	case DOWNLOAD_CLIENT_EVT_DONE: {
 		SEND_DYN_EVENT(password, PASSWORD_EVT_DOWNLOAD_FINISHED);
         state_set(STATE_FREE);
+		download_client_disconnect(&dl_client);
+		LOG_DBG("Stream flash bytes written: %d", stream_flash_bytes_written(&ctx));
 		LOG_DBG("Download complete");
 		first_fragment = true;
 		break;
@@ -194,9 +255,10 @@ static int download_client_callback(const struct download_client_evt *event)
 		} else {
 			download_client_disconnect(&dl_client);
 			first_fragment = true;
-			// SEND_DYN_ERROR(password, PASSWORD_EVT_DOWNLOAD_ERROR, event->error);
-			// LOG_ERR("An error occured while downloading: %d", event->error);
-			return event->error;
+			int err = event->error; /* Glue for logging */
+			SEND_DYN_ERROR(password, PASSWORD_EVT_DOWNLOAD_ERROR, err);
+			LOG_ERR("An error occured while downloading: %d", err);
+			return err;
 		}
 		break;
 	}
@@ -255,7 +317,20 @@ static bool event_handler(const struct event_header *eh)
 static int setup(void)
 {
     int err = 0;
+	fdev = device_get_binding(FLASH_NAME);
+	if (fdev == NULL) {
+		return -ENODEV;
+	}
+
 	err = download_client_init(&dl_client, download_client_callback);
+	if (err != 0) {
+		return err;
+	}
+	err = init_stream_flash();
+	if (err != 0) {
+		return err;
+	}
+
 	state_set(STATE_FREE);
 	first_fragment = true;
 	socket_retries_left = CONFIG_PASSWORD_DOWNLOAD_SOCKET_RETRIES;

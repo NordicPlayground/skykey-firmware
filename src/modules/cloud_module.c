@@ -330,7 +330,6 @@ static void on_state_lte_disconnected(struct cloud_msg_data *msg)
 		/* Update current time. */
 		date_time_update_async(NULL);
 
-		printk("Attempting to connect to AWS");
 		/* LTE is now connected, cloud connection can be attempted */
 		connect_aws();
 	}
