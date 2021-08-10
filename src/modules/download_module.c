@@ -18,21 +18,21 @@
 #include <storage/stream_flash.h>
 
 
-#include "events/password_module_event.h"
+#include "events/download_module_event.h"
 #include "events/cloud_module_event.h"
 
-#define MODULE password_module
+#define MODULE download_module
 
 #include "modules_common.h"
 
 #include <logging/log.h>
-LOG_MODULE_REGISTER(MODULE, CONFIG_PASSWORD_MODULE_LOG_LEVEL);
+LOG_MODULE_REGISTER(MODULE, CONFIG_DOWNLOAD_MODULE_LOG_LEVEL);
 
-struct password_msg_data
+struct download_msg_data
 {
     union
     {
-        struct password_module_event password;
+        struct download_module_event download;
         struct cloud_module_event cloud;
     } module;
 	void *data;
@@ -42,16 +42,16 @@ static enum state_type { STATE_DOWNLOADING,
               STATE_FREE,
 } module_state = STATE_FREE;
 
-/* Password module message queue. */
-#define PASSWORD_QUEUE_ENTRY_COUNT 10
-#define PASSWORD_QUEUE_BYTE_ALIGNMENT 4
+/* Download module message queue. */
+#define DOWNLOAD_QUEUE_ENTRY_COUNT 10
+#define DOWNLOAD_QUEUE_BYTE_ALIGNMENT 4
 
-K_MSGQ_DEFINE(msgq_password, sizeof(struct password_msg_data),
-              PASSWORD_QUEUE_ENTRY_COUNT, PASSWORD_QUEUE_BYTE_ALIGNMENT);
+K_MSGQ_DEFINE(msgq_download, sizeof(struct download_msg_data),
+              DOWNLOAD_QUEUE_ENTRY_COUNT, DOWNLOAD_QUEUE_BYTE_ALIGNMENT);
 
 static struct module_data self = {
-    .name = "password",
-    .msg_q = &msgq_password,
+    .name = "download",
+    .msg_q = &msgq_download,
     .supports_shutdown = true,
 };
 
@@ -106,7 +106,7 @@ static int download_connect_and_start(const char* url)
 		return err;
 	}
 
-	socket_retries_left = CONFIG_PASSWORD_DOWNLOAD_SOCKET_RETRIES;
+	socket_retries_left = CONFIG_DOWNLOAD_DOWNLOAD_SOCKET_RETRIES;
     state_set(STATE_DOWNLOADING);
 	return err;
 }
@@ -129,7 +129,7 @@ static int download_connect_and_start(const char* url)
 #define FLASH_BASE DT_REG_ADDR(STORAGE_NODE)
 #define FLASH_AVAILABLE DT_REG_SIZE(STORAGE_NODE) /* Assume only pw module writes to storage node */
 
-static const struct device *fdev;
+static const struct device *flash_dev;
 static struct stream_flash_ctx ctx;
 
 static uint8_t buf[BUF_LEN];
@@ -144,7 +144,7 @@ static int init_stream_flash(void)
 	memset(&ctx, 0, sizeof(ctx));
 	memset(buf, 0, BUF_LEN);
 
-	err = stream_flash_init(&ctx, fdev, buf, BUF_LEN, FLASH_BASE, 0, NULL);
+	err = stream_flash_init(&ctx, flash_dev, buf, BUF_LEN, FLASH_BASE, 0, NULL);
 	if (err < 0) {
 		return err;
 	}
@@ -182,27 +182,27 @@ static int handle_file_fragment(const void * const fragment, size_t frag_size, s
  *                                                                                      */
 //========================================================================================
 
-static void on_state_free(struct password_msg_data *msg)
+static void on_state_free(struct download_msg_data *msg)
 {
 	int err;
     if (IS_EVENT(msg, cloud, CLOUD_EVT_DATABASE_UPDATE_AVAILABLE)) {
 		err = download_connect_and_start(msg->data);
 		if (err != 0) {
-			SEND_DYN_ERROR(password, PASSWORD_EVT_DOWNLOAD_ERROR, err);
+			SEND_ERROR(download, DOWNLOAD_EVT_ERROR, err);
 			return;
 		}
-		SEND_DYN_EVENT(password, PASSWORD_EVT_DOWNLOAD_STARTED);
+		SEND_EVENT(download, DOWNLOAD_EVT_DOWNLOAD_STARTED);
 
 
 	}
 }
 
-static void on_state_downloading(struct password_msg_data *msg)
+static void on_state_downloading(struct download_msg_data *msg)
 {
 }
 
 /* Message handler for all states. */
-static void on_all_states(struct password_msg_data *msg)
+static void on_all_states(struct download_msg_data *msg)
 {
     //TODO: Implement or remove
     return;
@@ -233,7 +233,7 @@ static int download_client_callback(const struct download_client_evt *event)
 		break;
 	}
 	case DOWNLOAD_CLIENT_EVT_DONE: {
-		SEND_DYN_EVENT(password, PASSWORD_EVT_DOWNLOAD_FINISHED);
+		SEND_EVENT(download, DOWNLOAD_EVT_DOWNLOAD_FINISHED);
         state_set(STATE_FREE);
 		download_client_disconnect(&dl_client);
 		LOG_DBG("Stream flash bytes written: %d", stream_flash_bytes_written(&ctx));
@@ -256,7 +256,7 @@ static int download_client_callback(const struct download_client_evt *event)
 			download_client_disconnect(&dl_client);
 			first_fragment = true;
 			int err = event->error; /* Glue for logging */
-			SEND_DYN_ERROR(password, PASSWORD_EVT_DOWNLOAD_ERROR, err);
+			SEND_ERROR(download, DOWNLOAD_EVT_ERROR, err);
 			LOG_ERR("An error occured while downloading: %d", err);
 			return err;
 		}
@@ -275,7 +275,7 @@ static int download_client_callback(const struct download_client_evt *event)
  */
 static bool event_handler(const struct event_header *eh)
 {
-    struct password_msg_data msg = {0};
+    struct download_msg_data msg = {0};
     bool enqueue_msg = false;
 
     if (is_cloud_module_event(eh)) {
@@ -294,7 +294,7 @@ static bool event_handler(const struct event_header *eh)
 
         if (err) {
             LOG_ERR("Message could not be enqueued");
-            SEND_DYN_ERROR(password, PASSWORD_EVT_ERROR, err);
+            SEND_ERROR(download, DOWNLOAD_EVT_ERROR, err);
         }
     }
 
@@ -317,8 +317,9 @@ static bool event_handler(const struct event_header *eh)
 static int setup(void)
 {
     int err = 0;
-	fdev = device_get_binding(FLASH_NAME);
-	if (fdev == NULL) {
+	flash_dev = device_get_binding(FLASH_NAME);
+	if (!device_is_ready(flash_dev)) {
+		        LOG_ERR("Flash device %s is not ready", flash_dev->name);
 		return -ENODEV;
 	}
 
@@ -333,7 +334,7 @@ static int setup(void)
 
 	state_set(STATE_FREE);
 	first_fragment = true;
-	socket_retries_left = CONFIG_PASSWORD_DOWNLOAD_SOCKET_RETRIES;
+	socket_retries_left = CONFIG_DOWNLOAD_DOWNLOAD_SOCKET_RETRIES;
     return err;
 }
 
@@ -346,21 +347,21 @@ static int setup(void)
 static void module_thread_fn(void)
 {
     int err;
-    struct password_msg_data msg;
+    struct download_msg_data msg;
     self.thread_id = k_current_get();
 
     err = module_start(&self);
     if (err)
     {
         LOG_ERR("Failed starting module, error: %d", err);
-        SEND_DYN_ERROR(password, PASSWORD_EVT_ERROR, err);
+        SEND_ERROR(download, DOWNLOAD_EVT_ERROR, err);
     }
 
     err = setup();
     if (err)
     {
         LOG_ERR("setup, error %d", err);
-        SEND_DYN_ERROR(password, PASSWORD_EVT_ERROR, err);
+        SEND_ERROR(download, DOWNLOAD_EVT_ERROR, err);
     }
     while (true)
     {
@@ -385,7 +386,7 @@ static void module_thread_fn(void)
     }
 }
 
-K_THREAD_DEFINE(password_module_thread, CONFIG_PASSWORD_THREAD_STACK_SIZE,
+K_THREAD_DEFINE(download_module_thread, CONFIG_DOWNLOAD_THREAD_STACK_SIZE,
                 module_thread_fn, NULL, NULL, NULL,
                 K_LOWEST_APPLICATION_THREAD_PRIO, 0, 0);
 

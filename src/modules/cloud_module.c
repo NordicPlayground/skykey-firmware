@@ -19,7 +19,7 @@
 #include <cJSON_os.h>
 
 #include "events/cloud_module_event.h"
-#include "events/password_module_event.h"
+#include "events/download_module_event.h"
 
 #define MODULE cloud_module
 
@@ -33,7 +33,7 @@ struct cloud_msg_data
 	union
 	{
 		struct cloud_module_event cloud;
-		struct password_module_event password;
+		struct download_module_event download;
 	} module;
 	void *data;
 };
@@ -396,10 +396,10 @@ static bool event_handler(const struct event_header *eh)
 		enqueue_msg = true;
 	}
 
-	if (is_password_module_event(eh))
+	if (is_download_module_event(eh))
 	{
-		struct password_module_event *evt = cast_password_module_event(eh);
-		msg.module.password = *evt;
+		struct download_module_event *evt = cast_download_module_event(eh);
+		msg.module.download = *evt;
 		enqueue_msg = true;
 	}
 
@@ -660,4 +660,4 @@ K_THREAD_DEFINE(cloud_module_thread, CONFIG_CLOUD_THREAD_STACK_SIZE,
 
 EVENT_LISTENER(MODULE, event_handler);
 EVENT_SUBSCRIBE(MODULE, cloud_module_event);
-EVENT_SUBSCRIBE(MODULE, password_module_event);
+EVENT_SUBSCRIBE(MODULE, download_module_event);
