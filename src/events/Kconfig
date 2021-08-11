@@ -22,4 +22,7 @@ config DOWNLOAD_EVENTS_LOG
 	bool "Enable logging for download module events"
 	default y
 
+config PASSWORD_EVENTS_LOG
+		bool "Enable logging for password module events"
+	default y
 endif

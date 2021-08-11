@@ -13,8 +13,9 @@ static char *get_evt_type_str(enum display_module_event_type type)
 	switch (type) {
 	case DISPLAY_EVT_PLATFORM_CHOSEN:
 		return "DISPLAY_EVT_PLATFORM_CHOSEN";
-	case DISPLAY_EVT_ERROR:
-		return "DISPLAY_EVT_ERROR";
+	case DISPLAY_EVT_REQUEST_PLATFORMS:
+		return "DISPLAY_EVT_REQUEST_PLATFORMS";
+	case DISPLAY_EVT_ERROR : return "DISPLAY_EVT_ERROR";
 	default:
 		return "Unknown event";
 	}

@@ -22,7 +22,8 @@ extern "C" {
 /** @brief Display event types submitted by display module. */
 enum display_module_event_type {
 	DISPLAY_EVT_PLATFORM_CHOSEN,
-	DISPLAY_EVT_ERROR
+	DISPLAY_EVT_REQUEST_PLATFORMS,
+	DISPLAY_EVT_ERROR,
 };
 
 struct display_module_data {

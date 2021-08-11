@@ -17,6 +17,7 @@
 #include <settings/settings.h>
 #include <storage/stream_flash.h>
 
+#include "util/file_util.h"
 
 #include "events/download_module_event.h"
 #include "events/cloud_module_event.h"
@@ -117,58 +118,60 @@ static int download_connect_and_start(const char* url)
  *                                                                                      */
 //========================================================================================
 
-#define STORAGE_NODE DT_NODE_BY_FIXED_PARTITION_LABEL(storage)
-#define FLASH_NAME DT_CHOSEN_ZEPHYR_FLASH_CONTROLLER_LABEL
+// #define STORAGE_NODE DT_NODE_BY_FIXED_PARTITION_LABEL(storage)
+// #define FLASH_NAME DT_CHOSEN_ZEPHYR_FLASH_CONTROLLER_LABEL
 
 
-#define BUF_LEN CONFIG_DOWNLOAD_CLIENT_HTTP_FRAG_SIZE
-#define MAX_PAGE_SIZE BUF_LEN /* Buf len cannot be larger than the page size*/
+// #define BUF_LEN CONFIG_DOWNLOAD_CLIENT_HTTP_FRAG_SIZE
+// #define MAX_PAGE_SIZE BUF_LEN /* Buf len cannot be larger than the page size*/
 
 
-/* so that we don't overwrite the application when running on hw */
-#define FLASH_BASE DT_REG_ADDR(STORAGE_NODE)
-#define FLASH_AVAILABLE DT_REG_SIZE(STORAGE_NODE) /* Assume only pw module writes to storage node */
+// /* so that we don't overwrite the application when running on hw */
+// #define FLASH_BASE DT_REG_ADDR(STORAGE_NODE)
+// #define FLASH_AVAILABLE DT_REG_SIZE(STORAGE_NODE) /* Assume only pw module writes to storage node */
 
-static const struct device *flash_dev;
-static struct stream_flash_ctx ctx;
+// static const struct device *flash_dev;
+// static struct stream_flash_ctx ctx;
 
-static uint8_t buf[BUF_LEN];
+// static uint8_t buf[BUF_LEN];
 
 
 
-static int init_stream_flash(void) 
-{
-	int err = 0;
+// static int init_stream_flash(void) 
+// {
+// 	int err = 0;
 
-	/* Ensure that target is clean */
-	memset(&ctx, 0, sizeof(ctx));
-	memset(buf, 0, BUF_LEN);
+// 	/* Ensure that target is clean */
+// 	memset(&ctx, 0, sizeof(ctx));
+// 	memset(buf, 0, BUF_LEN);
 
-	err = stream_flash_init(&ctx, flash_dev, buf, BUF_LEN, FLASH_BASE, 0, NULL);
-	if (err < 0) {
-		return err;
-	}
-	return err;
-}
+// 	err = stream_flash_init(&ctx, flash_dev, buf, BUF_LEN, FLASH_BASE, 0, NULL);
+// 	if (err < 0) {
+// 		return err;
+// 	}
+// 	return err;
+// }
 
 
 static int handle_file_fragment(const void * const fragment, size_t frag_size, size_t file_size)
 {
     int err; 
 	
-	memcpy(buf, fragment, frag_size);
+	// memcpy(buf, fragment, frag_size);
 
     static int frag_count = 0;
     static int data_received = 0;
     data_received += frag_size;
-	bool should_flush = false;
+	bool final_fragment = false;
 	if (data_received == file_size) {
-		should_flush = true;
+		final_fragment = true;
 	}
-	err = stream_flash_buffered_write(&ctx, buf, frag_size, should_flush);
-	if (err != 0) {
-		return err;
-	}
+
+	err = file_write(fragment, frag_size, final_fragment);	
+	// err = stream_flash_buffered_write(&ctx, buf, frag_size, should_flush);
+	// if (err != 0) {
+	// 	return err;
+	// }
 
     int percentage = (data_received * 100) / file_size;
     LOG_DBG("Received fragment %d.\n Received: %d B/%d B\n  (%d%%)", frag_count++, data_received, file_size, percentage);
@@ -186,6 +189,13 @@ static void on_state_free(struct download_msg_data *msg)
 {
 	int err;
     if (IS_EVENT(msg, cloud, CLOUD_EVT_DATABASE_UPDATE_AVAILABLE)) {
+		err = file_write_start();
+		if (err != 0)
+		{
+			SEND_ERROR(download, DOWNLOAD_EVT_FLASH_ERROR, err);
+			return;
+		}
+
 		err = download_connect_and_start(msg->data);
 		if (err != 0) {
 			SEND_ERROR(download, DOWNLOAD_EVT_ERROR, err);
@@ -233,12 +243,13 @@ static int download_client_callback(const struct download_client_evt *event)
 		break;
 	}
 	case DOWNLOAD_CLIENT_EVT_DONE: {
-		SEND_EVENT(download, DOWNLOAD_EVT_DOWNLOAD_FINISHED);
-        state_set(STATE_FREE);
 		download_client_disconnect(&dl_client);
-		LOG_DBG("Stream flash bytes written: %d", stream_flash_bytes_written(&ctx));
+		state_set(STATE_FREE);
+		// LOG_DBG("Stream flash bytes written: %d", stream_flash_bytes_written(&ctx));
+
 		LOG_DBG("Download complete");
 		first_fragment = true;
+		SEND_EVENT(download, DOWNLOAD_EVT_DOWNLOAD_FINISHED);
 		break;
 	}
 	case DOWNLOAD_CLIENT_EVT_ERROR: {
@@ -256,8 +267,8 @@ static int download_client_callback(const struct download_client_evt *event)
 			download_client_disconnect(&dl_client);
 			first_fragment = true;
 			int err = event->error; /* Glue for logging */
-			SEND_ERROR(download, DOWNLOAD_EVT_ERROR, err);
 			LOG_ERR("An error occured while downloading: %d", err);
+			SEND_ERROR(download, DOWNLOAD_EVT_ERROR, err);
 			return err;
 		}
 		break;
@@ -317,20 +328,20 @@ static bool event_handler(const struct event_header *eh)
 static int setup(void)
 {
     int err = 0;
-	flash_dev = device_get_binding(FLASH_NAME);
-	if (!device_is_ready(flash_dev)) {
-		        LOG_ERR("Flash device %s is not ready", flash_dev->name);
-		return -ENODEV;
-	}
+	// flash_dev = device_get_binding(FLASH_NAME);
+	// if (!device_is_ready(flash_dev)) {
+	// 	        LOG_ERR("Flash device %s is not ready", flash_dev->name);
+	// 	return -ENODEV;
+	// }
 
 	err = download_client_init(&dl_client, download_client_callback);
 	if (err != 0) {
 		return err;
 	}
-	err = init_stream_flash();
-	if (err != 0) {
-		return err;
-	}
+	// err = init_stream_flash();
+	// if (err != 0) {
+	// 	return err;
+	// }
 
 	state_set(STATE_FREE);
 	first_fragment = true;
@@ -363,6 +374,7 @@ static void module_thread_fn(void)
         LOG_ERR("setup, error %d", err);
         SEND_ERROR(download, DOWNLOAD_EVT_ERROR, err);
     }
+
     while (true)
     {
         module_get_next_msg(&self, &msg, K_FOREVER);

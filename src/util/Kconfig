@@ -1,0 +1,11 @@
+menuconfig FILE_UTIL
+	bool "External sensors"
+    default y
+
+if FILE_UTIL
+
+module = FILE_UTIL
+module-str = File utilities
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # EXTERNAL_SENSORS
