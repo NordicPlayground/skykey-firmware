@@ -368,7 +368,9 @@ static void on_sub_state_cloud_disconnected(struct cloud_msg_data *msg)
 /* Message handler for all states. */
 static void on_all_states(struct cloud_msg_data *msg)
 {
-	//TODO: Implement or remove
+	if (msg->data != NULL) {
+		k_free(msg->data); // Free dynamic data
+	}
 	return;
 }
 
@@ -650,7 +652,6 @@ static void module_thread_fn(void)
 		}
 
 		on_all_states(&msg);
-		k_free(msg.data); // Free dynamic data
 	}
 }
 

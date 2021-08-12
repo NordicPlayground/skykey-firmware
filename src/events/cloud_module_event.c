@@ -47,8 +47,13 @@ static int log_event(const struct event_header *eh, char *buf,
 					 size_t buf_len)
 {
 	const struct cloud_module_event *event = cast_cloud_module_event(eh);
-
-	return snprintf(buf, buf_len, "%s", get_evt_type_str(event->type));
+	switch (event->type)
+	{
+	case CLOUD_EVT_DATABASE_UPDATE_AVAILABLE:
+		return snprintf(buf, buf_len, "%s: URL %s", get_evt_type_str(event->type), event->dyndata.data);
+	default:
+		return snprintf(buf, buf_len, "%s", get_evt_type_str(event->type));
+	}
 }
 
 #if defined(CONFIG_PROFILER)

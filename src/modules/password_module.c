@@ -20,6 +20,7 @@
 #define MODULE password_module
 
 #include "modules_common.h"
+#include "util/file_util.h"
 
 #include <logging/log.h>
 LOG_MODULE_REGISTER(MODULE, CONFIG_PASSWORD_MODULE_LOG_LEVEL);
@@ -47,9 +48,71 @@ static struct module_data self = {
 	.supports_shutdown = true,
 };
 
-#define READ_BUF_LEN 1024 /* Maximum amount of characters read from password file */
+//========================================================================================
+/*                                                                                      *
+ *                                    Read file                                         *
+ *                                                                                      */
+//========================================================================================
+
+#define READ_BUF_LEN 256 /* Maximum amount of characters read from password file */
+#define MAX_NUM_PLATFORMS 10
+#define MAX_STRING_SIZE 10
+#define PLATFORMS_BUF_MAX_LEN MAX_NUM_PLATFORMS*MAX_STRING_SIZE+MAX_NUM_PLATFORMS
 
 static uint8_t read_buf[READ_BUF_LEN];
+static uint8_t plaintext_buf[READ_BUF_LEN];
+struct platforms {
+	uint8_t platforms_buf[PLATFORMS_BUF_MAX_LEN];
+	size_t size;
+} platforms;
+
+
+// static uint8_t platforms[PLATFORMS_BUF_MAX_LEN];
+
+int decrypt_file(void) {
+	//TODO: actually decrypt an encrypted file
+	memcpy(plaintext_buf, read_buf, READ_BUF_LEN);
+	return 0;
+}
+
+/* Very basic scanning of the plaintext buf */
+void get_available_platforms(void) {
+	decrypt_file();
+	memset(platforms.platforms_buf, '0', PLATFORMS_BUF_MAX_LEN);
+	platforms.size = 0;
+	int read_i = 0;
+	int platforms_i = 0;
+
+	//TODO: Find a smarter way to do this scanning
+	while (read_i < READ_BUF_LEN) {
+		if (plaintext_buf[read_i] == ' ')
+		{ //First entry of line is fully read
+			platforms.platforms_buf[platforms_i] = ' ';
+			platforms_i++;
+			while (plaintext_buf[read_i] != '\n') {
+				if (plaintext_buf[read_i] == '0' || read_i == READ_BUF_LEN-1) {
+					platforms.size = platforms_i;
+					return;
+				}
+				read_i++;
+			}
+		} else {
+			if (plaintext_buf[read_i] == '0')
+			{ //End of contents
+				platforms.platforms_buf[platforms_i-1] ='0'; //remove trailing space
+				platforms.size = platforms_i;
+				return;
+			}
+			platforms.platforms_buf[platforms_i] = plaintext_buf[read_i];
+			read_i++;
+			platforms_i++;
+		}
+
+	}
+	memset(plaintext_buf, '0', READ_BUF_LEN); // Don't keep plaintext buffer for too long
+	return;
+}
+
 //========================================================================================
 /*                                                                                      *
  *                                    Event handlers                                    *
@@ -66,12 +129,12 @@ static bool event_handler(const struct event_header *eh)
 	struct password_msg_data msg = {0};
 	bool enqueue_msg = false;
 
-	// if (is_download_module_event(eh))
-	// {
-	// 	struct download_module_event *evt = cast_download_module_event(eh);
-	// 	msg.module.download = *evt;
-	// 	enqueue_msg = true;
-	// }
+	if (is_download_module_event(eh))
+	{
+		struct download_module_event *evt = cast_download_module_event(eh);
+		msg.module.download = *evt;
+		enqueue_msg = true;
+	}
 
 	if (is_display_module_event(eh))
 	{
@@ -101,94 +164,6 @@ static bool event_handler(const struct event_header *eh)
  */
 static int setup(void)
 {
-
-	struct fs_mount_t *mp = &lfs_storage_mnt;
-	unsigned int id = (uintptr_t)mp->storage_dev;
-	char fname[MAX_PATH_LEN];
-	struct fs_statvfs sbuf;
-	const struct flash_area *pfa;
-	int rc;
-
-	snprintf(fname, sizeof(fname), "%s/boot_count", mp->mnt_point);
-
-	rc = flash_area_open(id, &pfa);
-	if (rc < 0)
-	{
-		printk("FAIL: unable to find flash area %u: %d\n",
-			   id, rc);
-		return;
-	}
-
-	printk("Area %u at 0x%x on %s for %u bytes\n",
-		   id, (unsigned int)pfa->fa_off, pfa->fa_dev_name,
-		   (unsigned int)pfa->fa_size);
-
-	flash_area_close(pfa);
-
-	rc = fs_mount(mp);
-	if (rc < 0)
-	{
-		printk("FAIL: mount id %u at %s: %d\n",
-			   (unsigned int)mp->storage_dev, mp->mnt_point,
-			   rc);
-		return;
-	}
-	printk("%s mount: %d\n", mp->mnt_point, rc);
-
-	rc = fs_statvfs(mp->mnt_point, &sbuf);
-	if (rc < 0)
-	{
-		printk("FAIL: statvfs: %d\n", rc);
-		goto out;
-	}
-
-	printk("%s: bsize = %lu ; frsize = %lu ;"
-		   " blocks = %lu ; bfree = %lu\n",
-		   mp->mnt_point,
-		   sbuf.f_bsize, sbuf.f_frsize,
-		   sbuf.f_blocks, sbuf.f_bfree);
-
-	struct fs_dirent dirent;
-
-	rc = fs_stat(fname, &dirent);
-	printk("%s stat: %d\n", fname, rc);
-	if (rc >= 0)
-	{
-		printk("\tfn '%s' siz %u\n", dirent.name, dirent.size);
-	}
-
-	struct fs_file_t file;
-
-	fs_file_t_init(&file);
-
-	rc = fs_open(&file, fname, FS_O_READ);
-	if (rc < 0)
-	{
-		printk("FAIL: open %s: %d\n", fname, rc);
-		goto out;
-	}
-
-	rc = fs_read(&file, &read_buf, sizeof(read_buf));
-	printk("%d bytes read", rc);
-	rc = fs_close(&file);
-	printk("%s close: %d\n", fname, rc);
-	// int err;
-	// err = modem_configure();
-	// if (err)
-	// {
-	// 	LOG_ERR("modem_configure, error: %d", err);
-	// 	return err;
-	// }
-	// err = cloud_configure();
-	// if (err)
-	// {
-	// 	LOG_ERR("cloud_configure, error: %d", err);
-	// 	return err;
-	// }
-
-out:
-	rc = fs_unmount(mp);
-	printk("%s unmount: %d\n", mp->mnt_point, rc);
 	return 0;
 }
 
@@ -218,6 +193,18 @@ static void module_thread_fn(void)
 		LOG_ERR("setup, error %d", err);
 		SEND_DYN_ERROR(password, PASSWORD_EVT_ERROR, err);
 	}
+	/*Here temporarily for testing purposes*/
+	// file_extract_content(read_buf, READ_BUF_LEN);
+	// get_available_platforms();
+	// for (int i = 0; i < PLATFORMS_BUF_MAX_LEN; i++)
+	// {
+	// 	printk("%c", platforms.platforms_buf[i]);
+	// }
+	// printk("platforms.size: %d\n", platforms.size);
+	// struct password_module_event *event = new_password_module_event(platforms.size); // +1 for null terminator.
+	// event->type = PASSWORD_EVT_READ_PLATFORMS;
+	// memcpy(event->dyndata.data, &(platforms.platforms_buf), platforms.size);
+	// EVENT_SUBMIT(event);
 	while (true)
 	{
 
@@ -225,37 +212,16 @@ static void module_thread_fn(void)
 		if (IS_EVENT((&msg), display, DISPLAY_EVT_REQUEST_PLATFORMS)) {
 
 		}
-
-		// switch (state)
-		// {
-		// case STATE_LTE_CONNECTED:
-		// 	switch (sub_state)
-		// 	{
-		// 	case SUB_STATE_CLOUD_CONNECTED:
-		// 		on_sub_state_password_connected(&msg);
-		// 		break;
-		// 	case SUB_STATE_CLOUD_DISCONNECTED:
-		// 		on_sub_state_cloud_disconnected(&msg);
-		// 		break;
-		// 	default:
-		// 		LOG_ERR("Unknown Cloud module sub state");
-		// 		break;
-		// 	}
-		// 	on_state_lte_connected(&msg);
-		// 	break;
-		// case STATE_LTE_DISCONNECTED:
-		// 	on_state_lte_disconnected(&msg);
-		// 	break;
-		// case STATE_SHUTDOWN:
-		// 	/* The shutdown state has no transition. */
-		// 	break;
-		// default:
-		// 	LOG_ERR("Unknown Cloud module state.");
-		// 	break;
-		// }
-
-		// on_all_states(&msg);
-		// k_free(msg.data); // Free dynamic data
+		if (IS_EVENT((&msg), download, DOWNLOAD_EVT_DOWNLOAD_FINISHED)) {
+			//Temporarily react to this event. Should react to DISPLAY_EVT_REQUEST_PLATFORMS
+			file_extract_content(read_buf, READ_BUF_LEN);
+			get_available_platforms();
+			// printk("platforms.size: %d\n", platforms.size);
+			struct password_module_event *event = new_password_module_event(platforms.size);
+			event->type = PASSWORD_EVT_READ_PLATFORMS;
+			memcpy(event->dyndata.data, &(platforms.platforms_buf), platforms.size);
+			EVENT_SUBMIT(event);
+		}
 	}
 }
 
