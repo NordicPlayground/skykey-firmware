@@ -34,15 +34,13 @@ extern "C"
 	struct download_module_event
 	{
 		struct event_header header;
-
+		enum download_module_event_type type;
 		union
 		{
 			/* Module ID, used when acknowledging shutdown requests. */
 			uint32_t id;
 			int err;
 		} data;
-
-		enum download_module_event_type type;
 	};
 
 	EVENT_TYPE_DECLARE(download_module_event);

@@ -10,7 +10,7 @@ extern "C" {
 
 struct display_data {
 	uint8_t id;
-	char* data;
+	char data[CONFIG_DISPLAY_LIST_ENTRY_MAX_LEN];
 };
 
 enum display_data_type {
@@ -27,6 +27,7 @@ enum btn_id_type {
 void lvgl_widgets_init(void);
 void hw_button_pressed(uint32_t key_id);
 struct display_data hw_button_long_pressed(uint32_t key_id);
+void set_platform_list_contents(const char *platform_names);
 
 #ifdef __cplusplus
 } /*extern "C"*/

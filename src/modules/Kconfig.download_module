@@ -10,6 +10,10 @@ if DOWNLOAD_MODULE
     int "Download module thread stack size"
     default 4096
 
+    config DOWNLOAD_FILE_MAX_SIZE_BYTES
+    int "Maximum number of bytes for the file to download"
+    default 2048
+
     config DOWNLOAD_STREAM_FLASH_DEBUG
     bool "Enable stream flash debugging"
     default y

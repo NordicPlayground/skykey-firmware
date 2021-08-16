@@ -28,6 +28,14 @@ config DISPLAY_THREAD_STACK_SIZE
 	int "Display module thread stack size"
 	default 2560
 
+config DISPLAY_LIST_ENTRY_MAX_NUM
+	int "Upper bound for number of entries"
+	default 10
+
+config DISPLAY_LIST_ENTRY_MAX_LEN
+	int "max entry length"
+	default 10
+
 # Display-specific settings
 
 if ST7789V

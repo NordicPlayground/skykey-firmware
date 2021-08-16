@@ -32,22 +32,18 @@ extern "C"
 	struct password_module_event
 	{
 		struct event_header header;
+		enum password_module_event_type type;
 
 		union
 		{
 			/* Module ID, used when acknowledging shutdown requests. */
 			uint32_t id;
 			int err;
+			char entries[(CONFIG_PASSWORD_ENTRY_MAX_NUM) * (CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN + 1)]; //+1 for whitespace between entries
 		} data;
-		/* DON'T MOVE THIS! Not having anything between the data union and dyndata struct causes builds to fail.
-		My current theory is that it breaks dyndata aligment and triggers an assert that ensures that
-		the dyndata field is at the end of the struct.*/
-		enum password_module_event_type type;
-
-		struct event_dyndata dyndata;
 	};
 
-	EVENT_TYPE_DYNDATA_DECLARE(password_module_event);
+	EVENT_TYPE_DECLARE(password_module_event);
 
 #ifdef __cplusplus
 }

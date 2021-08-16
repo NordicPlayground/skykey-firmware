@@ -30,7 +30,7 @@ static int log_event(const struct event_header *eh, char *buf,
 	switch (event->type)
 	{
 	case PASSWORD_EVT_READ_PLATFORMS:
-		return snprintf(buf, buf_len, "%s: Platforms %s", get_evt_type_str(event->type), event->dyndata.data);
+		return snprintf(buf, buf_len, "%s: Platforms %s", get_evt_type_str(event->type), event->data.entries);
 	default:
 		return snprintf(buf, buf_len, "%s", get_evt_type_str(event->type));
 	}

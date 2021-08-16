@@ -26,17 +26,13 @@ enum display_module_event_type {
 	DISPLAY_EVT_ERROR,
 };
 
-struct display_module_data {
-	char* platform;
-};
-
 /** @brief Display event. */
 struct display_module_event {
 	struct event_header header;
 	enum display_module_event_type type;
 
 	union {
-		struct display_module_data choice;
+		char choice[CONFIG_DISPLAY_LIST_ENTRY_MAX_LEN];
 		/* Module ID, used when acknowledging shutdown requests. */
 		uint32_t id;
 		int err;

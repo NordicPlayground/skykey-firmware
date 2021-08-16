@@ -12,6 +12,7 @@
 #include <fs/littlefs.h>
 #include <storage/flash_map.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "events/display_module_event.h"
 #include "events/download_module_event.h"
@@ -24,6 +25,10 @@
 
 #include <logging/log.h>
 LOG_MODULE_REGISTER(MODULE, CONFIG_PASSWORD_MODULE_LOG_LEVEL);
+
+#if IS_ENABLED(CONFIG_DOWNLOAD_MODULE)
+BUILD_ASSERT(CONFIG_DOWNLOAD_FILE_MAX_SIZE_BYTES == CONFIG_PASSWORD_FILE_MAX_SIZE_BYTES);
+#endif
 
 struct password_msg_data
 {
@@ -54,62 +59,51 @@ static struct module_data self = {
  *                                                                                      */
 //========================================================================================
 
-#define READ_BUF_LEN 256 /* Maximum amount of characters read from password file */
-#define MAX_NUM_PLATFORMS 10
-#define MAX_STRING_SIZE 10
-#define PLATFORMS_BUF_MAX_LEN MAX_NUM_PLATFORMS*MAX_STRING_SIZE+MAX_NUM_PLATFORMS
+#define READ_BUF_LEN CONFIG_PASSWORD_FILE_MAX_SIZE_BYTES /* Maximum amount of characters read from password file */
+#define ENTRIES_BUF_MAX_LEN (CONFIG_PASSWORD_ENTRY_MAX_NUM) * (CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN + 1)
 
-static uint8_t read_buf[READ_BUF_LEN];
+static uint8_t encrypted_buf[READ_BUF_LEN];
 static uint8_t plaintext_buf[READ_BUF_LEN];
-struct platforms {
-	uint8_t platforms_buf[PLATFORMS_BUF_MAX_LEN];
-	size_t size;
-} platforms;
+uint8_t entries_buf[ENTRIES_BUF_MAX_LEN];
 
-
-// static uint8_t platforms[PLATFORMS_BUF_MAX_LEN];
 
 int decrypt_file(void) {
 	//TODO: actually decrypt an encrypted file
-	memcpy(plaintext_buf, read_buf, READ_BUF_LEN);
+	memcpy(plaintext_buf, encrypted_buf, READ_BUF_LEN);
 	return 0;
 }
 
 /* Very basic scanning of the plaintext buf */
 void get_available_platforms(void) {
 	decrypt_file();
-	memset(platforms.platforms_buf, '0', PLATFORMS_BUF_MAX_LEN);
-	platforms.size = 0;
-	int read_i = 0;
-	int platforms_i = 0;
+	memset(entries_buf, '\0', ENTRIES_BUF_MAX_LEN * sizeof(uint8_t));
 
-	//TODO: Find a smarter way to do this scanning
-	while (read_i < READ_BUF_LEN) {
-		if (plaintext_buf[read_i] == ' ')
-		{ //First entry of line is fully read
-			platforms.platforms_buf[platforms_i] = ' ';
-			platforms_i++;
-			while (plaintext_buf[read_i] != '\n') {
-				if (plaintext_buf[read_i] == '0' || read_i == READ_BUF_LEN-1) {
-					platforms.size = platforms_i;
-					return;
-				}
-				read_i++;
-			}
+	char *token = strtok((char *)plaintext_buf, " ");
+	char platform[CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN];
+	int offset = 0;
+	while (token != NULL)
+	{
+		if (strlen(token) > CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN)
+		{
+			strncpy(platform, token, CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN-3);
+			strncat(platform, "...", 3);
 		} else {
-			if (plaintext_buf[read_i] == '0')
-			{ //End of contents
-				platforms.platforms_buf[platforms_i-1] ='0'; //remove trailing space
-				platforms.size = platforms_i;
-				return;
-			}
-			platforms.platforms_buf[platforms_i] = plaintext_buf[read_i];
-			read_i++;
-			platforms_i++;
+			strncpy(platform, token, CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN);
 		}
-
+		strncat(platform, " ", 1);
+		if (offset+strlen(platform) > ENTRIES_BUF_MAX_LEN) {
+			LOG_WRN("Size of entries exceeded max buffer length. Consider increasing CONFIG_PASSWORD_ENTRY_MAX_NUM");
+			break;
+		}
+		strncpy(entries_buf + offset, platform, CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN + 1);
+		offset += strlen(platform);
+		token = strtok(NULL, "\n"); //First word of next line
+		token = strtok(NULL, " ");
 	}
-	memset(plaintext_buf, '0', READ_BUF_LEN); // Don't keep plaintext buffer for too long
+	if (offset>0) {
+		entries_buf[offset - 1] = '\0'; //removes trailing space
+	}
+	memset(plaintext_buf, '\0', READ_BUF_LEN); // Don't keep plaintext buffer for too long
 	return;
 }
 
@@ -150,7 +144,7 @@ static bool event_handler(const struct event_header *eh)
 		if (err)
 		{
 			LOG_ERR("Message could not be enqueued");
-			SEND_DYN_ERROR(password, PASSWORD_EVT_ERROR, err);
+			SEND_ERROR(password, PASSWORD_EVT_ERROR, err);
 		}
 	}
 
@@ -184,26 +178,21 @@ static void module_thread_fn(void)
 	if (err)
 	{
 		LOG_ERR("Failed starting module, error: %d", err);
-		SEND_DYN_ERROR(password, PASSWORD_EVT_ERROR, err);
+		SEND_ERROR(password, PASSWORD_EVT_ERROR, err);
 	}
 
 	err = setup();
 	if (err)
 	{
 		LOG_ERR("setup, error %d", err);
-		SEND_DYN_ERROR(password, PASSWORD_EVT_ERROR, err);
+		SEND_ERROR(password, PASSWORD_EVT_ERROR, err);
 	}
 	/*Here temporarily for testing purposes*/
-	// file_extract_content(read_buf, READ_BUF_LEN);
+	// file_extract_content(encrypted_buf, READ_BUF_LEN);
 	// get_available_platforms();
-	// for (int i = 0; i < PLATFORMS_BUF_MAX_LEN; i++)
-	// {
-	// 	printk("%c", platforms.platforms_buf[i]);
-	// }
-	// printk("platforms.size: %d\n", platforms.size);
-	// struct password_module_event *event = new_password_module_event(platforms.size); // +1 for null terminator.
+	// struct password_module_event *event = new_password_module_event();
 	// event->type = PASSWORD_EVT_READ_PLATFORMS;
-	// memcpy(event->dyndata.data, &(platforms.platforms_buf), platforms.size);
+	// memcpy(event->data.entries, entries_buf, ENTRIES_BUF_MAX_LEN*sizeof(uint8_t));
 	// EVENT_SUBMIT(event);
 	while (true)
 	{
@@ -213,13 +202,13 @@ static void module_thread_fn(void)
 
 		}
 		if (IS_EVENT((&msg), download, DOWNLOAD_EVT_DOWNLOAD_FINISHED)) {
-			//Temporarily react to this event. Should react to DISPLAY_EVT_REQUEST_PLATFORMS
-			file_extract_content(read_buf, READ_BUF_LEN);
+			/* Temporarily react to this event. Should react to DISPLAY_EVT_REQUEST_PLATFORMS 
+			   when we start supporting folder structure.*/
+			file_extract_content(encrypted_buf, READ_BUF_LEN);
 			get_available_platforms();
-			// printk("platforms.size: %d\n", platforms.size);
-			struct password_module_event *event = new_password_module_event(platforms.size);
+			struct password_module_event *event = new_password_module_event();
 			event->type = PASSWORD_EVT_READ_PLATFORMS;
-			memcpy(event->dyndata.data, &(platforms.platforms_buf), platforms.size);
+			memcpy(event->data.entries, entries_buf, ENTRIES_BUF_MAX_LEN * sizeof(uint8_t));
 			EVENT_SUBMIT(event);
 		}
 	}
