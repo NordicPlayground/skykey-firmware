@@ -20,6 +20,7 @@
 
 #include "events/cloud_module_event.h"
 #include "events/download_module_event.h"
+#include "events/modem_module_event.h"
 
 #define MODULE cloud_module
 
@@ -34,23 +35,44 @@ struct cloud_msg_data
 	{
 		struct cloud_module_event cloud;
 		struct download_module_event download;
+		struct modem_module_event modem;
 	} module;
 };
 
 /* Cloud module super states. */
-static enum state_type { STATE_LTE_DISCONNECTED,
-						 STATE_LTE_CONNECTED,
-						 STATE_SHUTDOWN,
+static enum state_type { 
+	STATE_LTE_DISCONNECTED,
+	STATE_LTE_CONNECTED,
+	STATE_SHUTDOWN,
 } state;
 
 /* Cloud module sub states. */
-static enum sub_state_type { SUB_STATE_CLOUD_DISCONNECTED,
-							 SUB_STATE_CLOUD_CONNECTED,
+static enum sub_state_type { 
+	SUB_STATE_CLOUD_DISCONNECTED,
+	SUB_STATE_CLOUD_CONNECTED,
 } sub_state;
 
+/**
+ * @brief Work item used to check if a cloud connection is established.
+ */
+static struct k_work_delayable connect_check_work;
 
-/* Keeps track of connection retries.*/
-static int connection_retries = 0;
+struct cloud_backoff_delay_lookup
+{
+	int delay;
+};
+
+/* Lookup table for backoff reconnection to cloud. Binary scaling. */
+static struct cloud_backoff_delay_lookup backoff_delay[] = {
+	{32}, {64}, {128}, {256}, {512}, {2048},
+	{4096}, {8192}, {16384}, {32768}, {65536},
+	 {131072}, {262144}, {524288}, {1048576}
+};
+
+/* Variable that keeps track of how many times a reconnection to cloud
+ * has been tried without success.
+ */
+static int connect_retries;
 
 /* Cloud module message queue. */
 #define CLOUD_QUEUE_ENTRY_COUNT 10
@@ -64,6 +86,10 @@ static struct module_data self = {
 	.msg_q = &msgq_cloud,
 	.supports_shutdown = true,
 };
+
+/* Forward declarations. */
+static void connect_check_work_fn(struct k_work *work);
+static void send_config_received(void);
 
 /* Convenience functions used in internal state handling. */
 static char *state2str(enum state_type state)
@@ -135,20 +161,15 @@ static void sub_state_set(enum sub_state_type new_state)
 #define AWS_IOT_TOPIC_SHADOW_GET_ACCEPTED "$aws/things/352656109498066/shadow/get/accepted"
 
 /**
- * @brief Work item used to check if a cloud connection is established.
- */
-static struct k_work_delayable connect_check_work;
-
-/**
  * @brief Initialize connection to AWS
  * 
  */
 static void connect_aws(void)
 {
 	int err;
-	int backoff_sec = 32;
+	int backoff_sec = backoff_delay[connect_retries].delay;
 
-	if (connection_retries > CONFIG_CLOUD_CONNECT_RETRIES)
+	if (connect_retries > CONFIG_CLOUD_CONNECT_RETRIES)
 	{
 		LOG_WRN("Too many failed connection attempts");
 		SEND_ERROR(cloud, CLOUD_EVT_ERROR, -ENETUNREACH);
@@ -162,7 +183,7 @@ static void connect_aws(void)
 		LOG_ERR("AWS connection failed, error: %d", err);
 	}
 
-	connection_retries++;
+	connect_retries++;
 	LOG_WRN("Establishing connection. Retry in %d seconds if not successful.", backoff_sec);
 	k_work_reschedule(&connect_check_work, K_SECONDS(backoff_sec));
 }
@@ -310,14 +331,14 @@ static void connect_check_work_fn(struct k_work *work)
 /* Message handler for STATE_LTE_CONNECTED. */
 static void on_state_lte_connected(struct cloud_msg_data *msg)
 {
-	if (IS_EVENT(msg, cloud, CLOUD_EVT_LTE_DISCONNECTED))
+	if (IS_EVENT(msg, modem, MODEM_EVT_LTE_DISCONNECTED))
 	{
 		state_set(STATE_LTE_DISCONNECTED);
 		sub_state_set(SUB_STATE_CLOUD_DISCONNECTED);
 
 		aws_iot_disconnect();
 
-		connection_retries = 0;
+		connect_retries = 0;
 
 		k_work_cancel_delayable(&connect_check_work);
 
@@ -328,7 +349,7 @@ static void on_state_lte_connected(struct cloud_msg_data *msg)
 /* Message handler for STATE_LTE_DISCONNECTED. */
 static void on_state_lte_disconnected(struct cloud_msg_data *msg)
 {
-	if (IS_EVENT(msg, cloud, CLOUD_EVT_LTE_CONNECTED))
+	if (IS_EVENT(msg, modem, MODEM_EVT_LTE_CONNECTED))
 	{
 		state_set(STATE_LTE_CONNECTED);
 		/* Update current time. */
@@ -359,7 +380,7 @@ static void on_sub_state_cloud_disconnected(struct cloud_msg_data *msg)
 	{
 		sub_state_set(SUB_STATE_CLOUD_CONNECTED);
 
-		connection_retries = 0;
+		connect_retries = 0;
 		k_work_cancel_delayable(&connect_check_work);
 	}
 
@@ -407,6 +428,12 @@ static bool event_handler(const struct event_header *eh)
 		enqueue_msg = true;
 	}
 
+	if (is_modem_module_event(eh)) {
+		struct modem_module_event *evt = cast_modem_module_event(eh);
+		msg.module.modem = *evt;
+		enqueue_msg = true;
+	}
+
 	if (enqueue_msg)
 	{
 		int err = module_enqueue_msg(&self, &msg);
@@ -419,62 +446,6 @@ static bool event_handler(const struct event_header *eh)
 	}
 
 	return false;
-}
-
-/**
- * @brief LTE event handler
- * 
- * @param evt Event
- */
-static void lte_handler(const struct lte_lc_evt *evt)
-{
-	switch (evt->type)
-	{
-	case LTE_LC_EVT_NW_REG_STATUS:
-	{
-
-		if ((evt->nw_reg_status != LTE_LC_NW_REG_REGISTERED_HOME) &&
-			(evt->nw_reg_status != LTE_LC_NW_REG_REGISTERED_ROAMING))
-		{
-			SEND_EVENT(cloud, CLOUD_EVT_LTE_DISCONNECTED);
-			break;
-		}
-
-		LOG_DBG("Network registration status: %s",
-				evt->nw_reg_status == LTE_LC_NW_REG_REGISTERED_HOME ? "Connected - home network" : "Connected - roaming");
-
-		SEND_EVENT(cloud, CLOUD_EVT_LTE_CONNECTED);
-		break;
-	}
-	case LTE_LC_EVT_PSM_UPDATE:
-		LOG_DBG("PSM parameter update: TAU: %d, Active time: %d",
-				evt->psm_cfg.tau, evt->psm_cfg.active_time);
-		break;
-	case LTE_LC_EVT_EDRX_UPDATE:
-	{
-		char log_buf[60];
-		ssize_t len;
-
-		len = snprintf(log_buf, sizeof(log_buf),
-					   "eDRX parameter update: eDRX: %f, PTW: %f",
-					   evt->edrx_cfg.edrx, evt->edrx_cfg.ptw);
-		if (len > 0)
-		{
-			LOG_DBG("%s", log_buf);
-		}
-		break;
-	}
-	case LTE_LC_EVT_RRC_UPDATE:
-		LOG_DBG("RRC mode: %s",
-				evt->rrc_mode == LTE_LC_RRC_MODE_CONNECTED ? "Connected" : "Idle");
-		break;
-	case LTE_LC_EVT_CELL_UPDATE:
-		LOG_DBG("LTE cell changed: Cell ID: %d, Tracking area: %d",
-				evt->cell.id, evt->cell.tac);
-		break;
-	default:
-		break;
-	}
 }
 
 /**
@@ -530,30 +501,6 @@ static void aws_iot_evt_handler(const struct aws_iot_evt *evt)
 //========================================================================================
 
 /**
- * @brief Configures modem and initializes LTE connection.
- * 
- * @return int 0 on success, negative errno code on failure.
- */
-static int modem_configure(void)
-{
-	int err;
-	state_set(STATE_LTE_DISCONNECTED);
-	err = lte_lc_init_and_connect_async(lte_handler);
-	if (err)
-	{
-		LOG_ERR("Modem could not be configured, error: %d", err);
-		return err;
-	}
-	err = modem_info_init();
-	if (err)
-	{
-		LOG_ERR("Modem info could not be initialized: %d", err);
-		return err;
-	}
-	return 0;
-}
-
-/**
  * @brief Initializes cloud related resources.
  * 
  * @return int 0 on success, negative errno code on failure.
@@ -561,7 +508,29 @@ static int modem_configure(void)
 static int cloud_configure(void)
 {
 	sub_state_set(SUB_STATE_CLOUD_DISCONNECTED);
-	int err = aws_iot_init(NULL, aws_iot_evt_handler);
+	int err;
+
+// #if !defined(CONFIG_CLOUD_CLIENT_ID_USE_CUSTOM)
+// 	char imei_buf[20];
+
+// 	/* Retrieve device IMEI from modem. */
+// 	err = at_cmd_write("AT+CGSN", imei_buf, sizeof(imei_buf), NULL);
+// 	if (err) {
+// 		LOG_ERR("Not able to retrieve device IMEI from modem");
+// 		return err;
+// 	}
+
+// 	/* Set null character at the end of the device IMEI. */
+// 	imei_buf[AWS_CLOUD_CLIENT_ID_LEN] = 0;
+
+// 	strncpy(client_id_buf, imei_buf, sizeof(client_id_buf) - 1);
+
+// #else
+// 	snprintf(client_id_buf, sizeof(client_id_buf), "%s",
+// 		 CONFIG_CLOUD_CLIENT_ID);
+// #endif
+	
+	err = aws_iot_init(NULL, aws_iot_evt_handler);
 	if (err)
 	{
 		LOG_ERR("aws_iot_init, error: %d", err);
@@ -579,12 +548,6 @@ static int cloud_configure(void)
 static int setup(void)
 {
 	int err;
-	err = modem_configure();
-	if (err)
-	{
-		LOG_ERR("modem_configure, error: %d", err);
-		return err;
-	}
 	err = cloud_configure();
 	if (err)
 	{
@@ -664,3 +627,4 @@ K_THREAD_DEFINE(cloud_module_thread, CONFIG_CLOUD_THREAD_STACK_SIZE,
 EVENT_LISTENER(MODULE, event_handler);
 EVENT_SUBSCRIBE(MODULE, cloud_module_event);
 EVENT_SUBSCRIBE(MODULE, download_module_event);
+EVENT_SUBSCRIBE(MODULE, modem_module_event);

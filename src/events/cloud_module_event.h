@@ -62,7 +62,7 @@ struct cloud_module_event
 		/* Module ID, used when acknowledging shutdown requests. */
 		uint32_t id;
 		int err;
-		char url[URL_MAX_LEN]
+		char url[URL_MAX_LEN];
 	} data;
 };
 
