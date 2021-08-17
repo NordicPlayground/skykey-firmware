@@ -19,8 +19,8 @@ static char *get_evt_type_str(enum download_module_event_type type)
 		return "DOWNLOAD_EVT_DOWNLOAD_STARTED";
 	case DOWNLOAD_EVT_DOWNLOAD_FINISHED:
 		return "DOWNLOAD_EVT_DOWNLOAD_FINISHED";
-	case DOWNLOAD_EVT_FLASH_ERROR:
-		return "DOWNLOAD_EVT_FLASH_ERROR";
+	case DOWNLOAD_EVT_STORAGE_ERROR:
+		return "DOWNLOAD_EVT_STORAGE_ERROR";
 	default:
 		return "";
 	}

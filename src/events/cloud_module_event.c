@@ -50,7 +50,7 @@ static int log_event(const struct event_header *eh, char *buf,
 	switch (event->type)
 	{
 	case CLOUD_EVT_DATABASE_UPDATE_AVAILABLE:
-		return snprintf(buf, buf_len, "%s: URL %s", get_evt_type_str(event->type), event->dyndata.data);
+		return snprintf(buf, buf_len, "%s: URL %s", get_evt_type_str(event->type), event->data.url);
 	default:
 		return snprintf(buf, buf_len, "%s", get_evt_type_str(event->type));
 	}

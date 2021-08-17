@@ -18,11 +18,11 @@ if DOWNLOAD_MODULE
     bool "Enable stream flash debugging"
     default y
 
-    config DOWNLOAD_DOWNLOAD_SOCKET_RETRIES
+    config DOWNLOAD_SOCKET_RETRIES
         int "Number of retries for socket-related download issues"
         default 2
 
-    config DOWNLOAD_DOWNLOAD_PROGRESS_EVT
+    config DOWNLOAD_PROGRESS_EVT
         bool "Emit progress event upon receiving a download fragment"
 
     module = DOWNLOAD_MODULE

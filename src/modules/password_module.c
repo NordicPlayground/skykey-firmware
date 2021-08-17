@@ -73,11 +73,19 @@ int decrypt_file(void) {
 	return 0;
 }
 
-/* Very basic scanning of the plaintext buf */
-void get_available_platforms(void) {
-	decrypt_file();
+/**
+ * Scans plaintext buffer for platforms. Right now, it assumes that the 
+ * platform entry is the first word on each new line.
+ * @return Negative ERRNO on failure. 0 on success.
+*/
+int get_available_platforms(void) {
+	int err;
+	err = decrypt_file();
+	if (err) {
+		LOG_WRN("Could not decrypt file.");
+		return err;
+	}
 	memset(entries_buf, '\0', ENTRIES_BUF_MAX_LEN * sizeof(uint8_t));
-
 	char *token = strtok((char *)plaintext_buf, " ");
 	char platform[CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN];
 	int offset = 0;
@@ -87,12 +95,14 @@ void get_available_platforms(void) {
 		{
 			strncpy(platform, token, CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN-3);
 			strncat(platform, "...", 3);
+			LOG_INF("Entry %s exceeds CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN. Altered entry name: %s", token, platform);
 		} else {
 			strncpy(platform, token, CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN);
 		}
 		strncat(platform, " ", 1);
 		if (offset+strlen(platform) > ENTRIES_BUF_MAX_LEN) {
-			LOG_WRN("Size of entries exceeded max buffer length. Consider increasing CONFIG_PASSWORD_ENTRY_MAX_NUM");
+			LOG_WRN("Size of entries exceeded max buffer length. Some entries will be lost. Consider increasing CONFIG_PASSWORD_ENTRY_MAX_NUM");
+			err = -ENOBUFS;
 			break;
 		}
 		strncpy(entries_buf + offset, platform, CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN + 1);
@@ -101,11 +111,13 @@ void get_available_platforms(void) {
 		token = strtok(NULL, " ");
 	}
 	if (offset>0) {
-		entries_buf[offset - 1] = '\0'; //removes trailing space
+		entries_buf[offset - 1] = '\0'; //remove trailing space
 	}
-	memset(plaintext_buf, '\0', READ_BUF_LEN); // Don't keep plaintext buffer for too long
-	return;
+	memset(plaintext_buf, '\0', READ_BUF_LEN); // Don't keep plaintext buffer in memory
+	return err;
 }
+
+
 
 //========================================================================================
 /*                                                                                      *
@@ -200,6 +212,9 @@ static void module_thread_fn(void)
 		module_get_next_msg(&self, &msg, K_FOREVER);
 		if (IS_EVENT((&msg), display, DISPLAY_EVT_REQUEST_PLATFORMS)) {
 
+		}
+		if (IS_EVENT((&msg), display, DISPLAY_EVT_PLATFORM_CHOSEN)) {
+			file_extract_content(encrypted_buf, READ_BUF_LEN);
 		}
 		if (IS_EVENT((&msg), download, DOWNLOAD_EVT_DOWNLOAD_FINISHED)) {
 			/* Temporarily react to this event. Should react to DISPLAY_EVT_REQUEST_PLATFORMS 

@@ -17,6 +17,10 @@ if CLOUD_MODULE
     help
       Maximum number of cloud connection retries.
 
+    config CLOUD_DOWNLOAD_URL_MAX_LEN
+    int "Maximum length for the URL entry of the shadow update"
+    default 256
+    
 
     module = CLOUD_MODULE
     module-str = Cloud module

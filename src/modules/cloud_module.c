@@ -35,7 +35,6 @@ struct cloud_msg_data
 		struct cloud_module_event cloud;
 		struct download_module_event download;
 	} module;
-	void *data;
 };
 
 /* Cloud module super states. */
@@ -152,7 +151,7 @@ static void connect_aws(void)
 	if (connection_retries > CONFIG_CLOUD_CONNECT_RETRIES)
 	{
 		LOG_WRN("Too many failed connection attempts");
-		SEND_DYN_ERROR(cloud, CLOUD_EVT_ERROR, -ENETUNREACH);
+		SEND_ERROR(cloud, CLOUD_EVT_ERROR, -ENETUNREACH);
 		return;
 	}
 
@@ -237,10 +236,15 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 		if (pwd_url_obj != NULL && pwd_ver_obj != NULL)
 		{
 			char *url = pwd_url_obj->valuestring;
-			struct cloud_module_event *event = new_cloud_module_event(strlen(url) + 1); // +1 for null terminator.
+			struct cloud_module_event *event = new_cloud_module_event();
 			event->type = CLOUD_EVT_DATABASE_UPDATE_AVAILABLE;
-			strcpy(event->dyndata.data, url);
-			EVENT_SUBMIT(event);
+			if (strlen(url) > CONFIG_CLOUD_DOWNLOAD_URL_MAX_LEN) {
+				LOG_ERR("URL length (%d) exceeded the configurated maximum length (%d).",
+					strlen(url), CONFIG_CLOUD_DOWNLOAD_URL_MAX_LEN);
+			} else {
+				strcpy(event->data.url, url);
+				EVENT_SUBMIT(event);
+			}
 		}
 		cJSON_AddItemReferenceToObject(reported, "pwd", pwd_obj); // HACK: Echo password settings to remove it from delta. Again, this is not a good solution.
 	}
@@ -254,7 +258,7 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 		.ptr = message,
 		.len = strlen(message)};
 
-	LOG_DBG("Updating shadow");
+	// LOG_DBG("Updating shadow");
 	// int err = aws_iot_send(&tx_data);
 
 	cJSON_free(message);
@@ -293,7 +297,7 @@ static void connect_check_work_fn(struct k_work *work)
 
 	LOG_DBG("Cloud connection timeout occurred");
 
-	SEND_DYN_EVENT(cloud, CLOUD_EVT_CONNECTION_TIMEOUT);
+	SEND_EVENT(cloud, CLOUD_EVT_CONNECTION_TIMEOUT);
 }
 
 //========================================================================================
@@ -368,9 +372,7 @@ static void on_sub_state_cloud_disconnected(struct cloud_msg_data *msg)
 /* Message handler for all states. */
 static void on_all_states(struct cloud_msg_data *msg)
 {
-	if (msg->data != NULL) {
-		k_free(msg->data); // Free dynamic data
-	}
+	//TODO: Implement this
 	return;
 }
 
@@ -412,7 +414,7 @@ static bool event_handler(const struct event_header *eh)
 		if (err)
 		{
 			LOG_ERR("Message could not be enqueued");
-			SEND_DYN_ERROR(cloud, CLOUD_EVT_ERROR, err);
+			SEND_ERROR(cloud, CLOUD_EVT_ERROR, err);
 		}
 	}
 
@@ -434,14 +436,14 @@ static void lte_handler(const struct lte_lc_evt *evt)
 		if ((evt->nw_reg_status != LTE_LC_NW_REG_REGISTERED_HOME) &&
 			(evt->nw_reg_status != LTE_LC_NW_REG_REGISTERED_ROAMING))
 		{
-			SEND_DYN_EVENT(cloud, CLOUD_EVT_LTE_DISCONNECTED);
+			SEND_EVENT(cloud, CLOUD_EVT_LTE_DISCONNECTED);
 			break;
 		}
 
 		LOG_DBG("Network registration status: %s",
 				evt->nw_reg_status == LTE_LC_NW_REG_REGISTERED_HOME ? "Connected - home network" : "Connected - roaming");
 
-		SEND_DYN_EVENT(cloud, CLOUD_EVT_LTE_CONNECTED);
+		SEND_EVENT(cloud, CLOUD_EVT_LTE_CONNECTED);
 		break;
 	}
 	case LTE_LC_EVT_PSM_UPDATE:
@@ -487,7 +489,7 @@ static void aws_iot_evt_handler(const struct aws_iot_evt *evt)
 	case AWS_IOT_EVT_CONNECTING:
 	{
 		LOG_DBG("Connecting to AWS");
-		SEND_DYN_EVENT(cloud, CLOUD_EVT_CONNECTING);
+		SEND_EVENT(cloud, CLOUD_EVT_CONNECTING);
 		break;
 	}
 	case AWS_IOT_EVT_CONNECTED:
@@ -610,14 +612,14 @@ static void module_thread_fn(void)
 	if (err)
 	{
 		LOG_ERR("Failed starting module, error: %d", err);
-		SEND_DYN_ERROR(cloud, CLOUD_EVT_ERROR, err);
+		SEND_ERROR(cloud, CLOUD_EVT_ERROR, err);
 	}
 
 	err = setup();
 	if (err)
 	{
 		LOG_ERR("setup, error %d", err);
-		SEND_DYN_ERROR(cloud, CLOUD_EVT_ERROR, err);
+		SEND_ERROR(cloud, CLOUD_EVT_ERROR, err);
 	}
 	while (true)
 	{

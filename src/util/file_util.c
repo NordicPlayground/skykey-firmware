@@ -44,8 +44,6 @@ int mount_fs(void) {
         return rc;
     }
     unsigned int id = (uintptr_t)mp->storage_dev;
-    struct fs_statvfs sbuf;
-
 
     snprintf(filename, sizeof(filename), "%s/my_passwords", mp->mnt_point);
 

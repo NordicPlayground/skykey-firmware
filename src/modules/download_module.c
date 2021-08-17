@@ -36,7 +36,6 @@ struct download_msg_data
         struct download_module_event download;
         struct cloud_module_event cloud;
     } module;
-	void *data;
 };
 
 static enum state_type { STATE_DOWNLOADING,
@@ -98,16 +97,16 @@ static void state_set(enum state_type new_state)
 static int download_connect_and_start(const char* url) 
 {
     int err = download_client_connect(&dl_client, url, &dl_client_cfg);
-	if (err != 0) {
+	if (err) {
 		return err;
 	}
 
 	err = download_client_start(&dl_client, url, 0);
-	if (err != 0) {
+	if (err) {
 		return err;
 	}
 
-	socket_retries_left = CONFIG_DOWNLOAD_DOWNLOAD_SOCKET_RETRIES;
+	socket_retries_left = CONFIG_DOWNLOAD_SOCKET_RETRIES;
     state_set(STATE_DOWNLOADING);
 	return err;
 }
@@ -138,16 +137,12 @@ static void on_state_free(struct download_msg_data *msg)
 {
 	int err;
     if (IS_EVENT(msg, cloud, CLOUD_EVT_DATABASE_UPDATE_AVAILABLE)) {
-
-
-		err = download_connect_and_start(msg->data);
-		if (err != 0) {
+		err = download_connect_and_start(msg->module.cloud.data.url);
+		if (err) {
 			SEND_ERROR(download, DOWNLOAD_EVT_ERROR, err);
 			return;
 		}
 		SEND_EVENT(download, DOWNLOAD_EVT_DOWNLOAD_STARTED);
-
-
 	}
 }
 
@@ -160,9 +155,6 @@ static void on_state_downloading(struct download_msg_data *msg)
 static void on_all_states(struct download_msg_data *msg)
 {
     //TODO: Implement or remove
-	if (msg->data != NULL) {
-		k_free(msg->data); // Free dynamic data
-	}
     return;
 }
 
@@ -180,16 +172,24 @@ static int download_client_callback(const struct download_client_evt *event)
 	case DOWNLOAD_CLIENT_EVT_FRAGMENT: {
 		if (first_fragment) {
 			err = file_write_start();
-			if (err != 0)
+			if (err)
 			{
-				SEND_ERROR(download, DOWNLOAD_EVT_FLASH_ERROR, err);
+				SEND_ERROR(download, DOWNLOAD_EVT_STORAGE_ERROR, err);
+				download_client_disconnect(&dl_client);
+				file_close_and_unmount();
+				state_set(STATE_FREE);
+				LOG_ERR("Could not store file. Cancelling download.");
 				return err;
 			}
 			LOG_DBG("Fragment received. Size: %d", event->fragment.len);
 			err = download_client_file_size_get(&dl_client, &file_size);
-			if (err != 0) {
+			if (err) {
 				LOG_DBG("download_client_file_size_get err: %d", err);
 				return err;
+			}
+			if (file_size > CONFIG_DOWNLOAD_FILE_MAX_SIZE_BYTES) {
+				SEND_ERROR(download, DOWNLOAD_EVT_ERROR, -EFBIG);
+				return -EFBIG;
 			}
 			first_fragment = false;
 		}
@@ -247,10 +247,6 @@ static bool event_handler(const struct event_header *eh)
         struct cloud_module_event *evt = cast_cloud_module_event(eh);
 
         msg.module.cloud = *evt;
-		if (evt->dyndata.size > 0) {
-			msg.data = k_malloc(evt->dyndata.size);
-			memcpy(msg.data, evt->dyndata.data, evt->dyndata.size);
-		}
         enqueue_msg = true;
     }
 
@@ -284,13 +280,13 @@ static int setup(void)
     int err = 0;
 
 	err = download_client_init(&dl_client, download_client_callback);
-	if (err != 0) {
+	if (err) {
 		return err;
 	}
 
 	state_set(STATE_FREE);
 	first_fragment = true;
-	socket_retries_left = CONFIG_DOWNLOAD_DOWNLOAD_SOCKET_RETRIES;
+	socket_retries_left = CONFIG_DOWNLOAD_SOCKET_RETRIES;
     return err;
 }
 

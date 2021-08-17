@@ -20,6 +20,12 @@ extern "C"
 {
 #endif
 
+#ifdef CONFIG_PASSWORD_MODULE
+#define ENTRIES_MAX_LEN ((CONFIG_PASSWORD_ENTRY_MAX_NUM) * (CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN + 1))
+#else
+#define ENTRIES_MAX_LEN 10
+#endif
+
 	/** @brief Password event types submitted by Password module. */
 	enum password_module_event_type
 	{
@@ -39,7 +45,7 @@ extern "C"
 			/* Module ID, used when acknowledging shutdown requests. */
 			uint32_t id;
 			int err;
-			char entries[(CONFIG_PASSWORD_ENTRY_MAX_NUM) * (CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN + 1)]; //+1 for whitespace between entries
+			char entries[ENTRIES_MAX_LEN];
 		} data;
 	};
 
