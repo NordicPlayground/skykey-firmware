@@ -156,9 +156,89 @@ static void sub_state_set(enum sub_state_type new_state)
  *                                                                                      */
 //========================================================================================
 
-// TODO: Find a better way to check for topics + remove hardcoded ID.
-#define AWS_IOT_TOPIC_SHADOW_UPDATE_DELTA "$aws/things/352656109498066/shadow/update/delta"
-#define AWS_IOT_TOPIC_SHADOW_GET_ACCEPTED "$aws/things/352656109498066/shadow/get/accepted"
+#if !defined(CONFIG_CLOUD_CLIENT_ID_USE_CUSTOM)
+#define AWS_CLOUD_CLIENT_ID_LEN 15
+#else
+#define AWS_CLOUD_CLIENT_ID_LEN (sizeof(CONFIG_CLOUD_CLIENT_ID) - 1)
+#endif
+
+#define AWS "$aws/things/"
+#define AWS_LEN (sizeof(AWS) - 1)
+#define UPDATE_DELTA_TOPIC AWS "%s/shadow/update/delta"
+#define UPDATE_DELTA_TOPIC_LEN (AWS_LEN + AWS_CLOUD_CLIENT_ID_LEN + 20)
+#define GET_ACCEPTED_TOPIC AWS "%s/shadow/get/accepted"
+#define GET_ACCEPTED_TOPIC_LEN (AWS_LEN + AWS_CLOUD_CLIENT_ID_LEN + 20)
+
+#define APP_SUB_TOPICS_COUNT 1
+#define APP_PUB_TOPICS_COUNT 2
+
+#define REQUEST_SHADOW_DOCUMENT_STRING ""
+
+static char client_id_buf[AWS_CLOUD_CLIENT_ID_LEN + 1];
+static char update_delta_topic[UPDATE_DELTA_TOPIC_LEN + 1];
+static char get_accepted_topic[GET_ACCEPTED_TOPIC_LEN + 1];
+
+static struct aws_iot_config config;
+
+static int populate_app_endpoint_topics(void)
+{
+	int err;
+
+// 	err = snprintf(batch_topic, sizeof(batch_topic), BATCH_TOPIC,
+// 				   client_id_buf);
+// 	if (err != BATCH_TOPIC_LEN)
+// 	{
+// 		return -ENOMEM;
+// 	}
+
+// 	pub_topics[0].str = batch_topic;
+// 	pub_topics[0].len = BATCH_TOPIC_LEN;
+
+// 	err = snprintf(messages_topic, sizeof(messages_topic), MESSAGES_TOPIC,
+// 				   client_id_buf);
+// 	if (err != MESSAGES_TOPIC_LEN)
+// 	{
+// 		return -ENOMEM;
+// 	}
+
+// 	pub_topics[1].str = messages_topic;
+// 	pub_topics[1].len = MESSAGES_TOPIC_LEN;
+
+// 	err = snprintf(cfg_topic, sizeof(cfg_topic), CFG_TOPIC, client_id_buf);
+// 	if (err != CFG_TOPIC_LEN)
+// 	{
+// 		return -ENOMEM;
+// 	}
+
+// 	sub_topics[0].str = cfg_topic;
+// 	sub_topics[0].len = CFG_TOPIC_LEN;
+
+	// err = snprintf(update_delta_topic, sizeof(update_delta_topic), UPDATE_DELTA_TOPIC,
+	// 			   client_id_buf);
+	// if (err != UPDATE_DELTA_TOPIC_LEN)
+	// {
+	// 	return -ENOMEM;
+	// }
+
+
+	// err = snprintf(get_accepted_topic, sizeof(get_accepted_topic), GET_ACCEPTED_TOPIC,
+	// 			   client_id_buf);
+	// if (err != GET_ACCEPTED_TOPIC_LEN)
+	// {
+	// 	return -ENOMEM;
+	// }
+
+
+// 	err = aws_iot_subscription_topics_add(sub_topics,
+// 										  ARRAY_SIZE(sub_topics));
+// 	if (err)
+// 	{
+// 		LOG_ERR("cloud_ep_subscriptions_add, error: %d", err);
+// 		return err;
+// 	}
+
+	return 0;
+}
 
 /**
  * @brief Initialize connection to AWS
@@ -177,7 +257,7 @@ static void connect_aws(void)
 	}
 
 	LOG_DBG("Connecting to AWS");
-	err = aws_iot_connect(NULL);
+	err = aws_iot_connect(&config);
 	if (err < 0)
 	{
 		LOG_ERR("AWS connection failed, error: %d", err);
@@ -291,7 +371,7 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 
 static void handle_cloud_data(const struct aws_iot_data *msg)
 {
-	if (!strcmp(msg->topic.str, AWS_IOT_TOPIC_SHADOW_GET_ACCEPTED))
+	if (!strcmp(msg->topic.str, get_accepted_topic))
 	{
 		cJSON *json = cJSON_Parse(msg->ptr);
 		cJSON *state = cJSON_GetObjectItemCaseSensitive(json, "state");
@@ -510,32 +590,44 @@ static int cloud_configure(void)
 	sub_state_set(SUB_STATE_CLOUD_DISCONNECTED);
 	int err;
 
-// #if !defined(CONFIG_CLOUD_CLIENT_ID_USE_CUSTOM)
-// 	char imei_buf[20];
+#if !defined(CONFIG_CLOUD_CLIENT_ID_USE_CUSTOM)
+	char imei_buf[20];
 
-// 	/* Retrieve device IMEI from modem. */
-// 	err = at_cmd_write("AT+CGSN", imei_buf, sizeof(imei_buf), NULL);
-// 	if (err) {
-// 		LOG_ERR("Not able to retrieve device IMEI from modem");
-// 		return err;
-// 	}
+	/* Retrieve device IMEI from modem. */
+	err = at_cmd_write("AT+CGSN", imei_buf, sizeof(imei_buf), NULL);
+	if (err) {
+		LOG_ERR("Not able to retrieve device IMEI from modem");
+		return err;
+	}
 
-// 	/* Set null character at the end of the device IMEI. */
-// 	imei_buf[AWS_CLOUD_CLIENT_ID_LEN] = 0;
+	/* Set null character at the end of the device IMEI. */
+	imei_buf[AWS_CLOUD_CLIENT_ID_LEN] = 0;
 
-// 	strncpy(client_id_buf, imei_buf, sizeof(client_id_buf) - 1);
+	strncpy(client_id_buf, imei_buf, sizeof(client_id_buf) - 1);
 
-// #else
-// 	snprintf(client_id_buf, sizeof(client_id_buf), "%s",
-// 		 CONFIG_CLOUD_CLIENT_ID);
-// #endif
-	
-	err = aws_iot_init(NULL, aws_iot_evt_handler);
+#else
+	snprintf(client_id_buf, sizeof(client_id_buf), "%s",
+		 CONFIG_CLOUD_CLIENT_ID);
+#endif
+	/* Fetch IMEI from modem data and set IMEI as cloud connection ID **/
+	config.client_id = client_id_buf;
+	config.client_id_len = strlen(client_id_buf);
+	// LOG_DBG("Client ID: %s", client_id_buf);
+	err = aws_iot_init(&config, aws_iot_evt_handler);
 	if (err)
 	{
 		LOG_ERR("aws_iot_init, error: %d", err);
 		return err;
 	}
+
+	/* Populate cloud specific endpoint topics */
+	err = populate_app_endpoint_topics();
+	if (err)
+	{
+		LOG_ERR("populate_app_endpoint_topics, error: %d", err);
+		return err;
+	}
+
 	k_work_init_delayable(&connect_check_work, connect_check_work_fn);
 	return 0;
 }
@@ -553,6 +645,20 @@ static int setup(void)
 	{
 		LOG_ERR("cloud_configure, error: %d", err);
 		return err;
+	}
+
+	err = snprintf(update_delta_topic, sizeof(update_delta_topic), UPDATE_DELTA_TOPIC,
+				   client_id_buf);
+	if (err != UPDATE_DELTA_TOPIC_LEN)
+	{
+		return -ENOMEM;
+	}
+
+	err = snprintf(get_accepted_topic, sizeof(get_accepted_topic), GET_ACCEPTED_TOPIC,
+				   client_id_buf);
+	if (err != GET_ACCEPTED_TOPIC_LEN)
+	{
+		return -ENOMEM;
 	}
 
 	return 0;

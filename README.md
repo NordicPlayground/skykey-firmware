@@ -23,3 +23,6 @@ The code itself is then located in ``./skykey-firmware``
 **Fingerprint module:** Glue between fingerprint sensor and the rest of the system
 
 **Display module:** Handles display-related tasks which allows users to choose a password for the device to input to the PC.
+
+## Issuing a certificate from AWS IoT
+Follow the steps in [creating a thing in AWS IoT](https://developer.nordicsemi.com/nRF_Connect_SDK/doc/latest/nrf/samples/nrf9160/aws_fota/README.html#creating-a-thing-in-aws-iot) with `your_client_id` being set to the device's IMEI number. A policy is not necessary. Then follow the steps in [programming the certificates to the on-board modem of the nRF9160-based kit](https://developer.nordicsemi.com/nRF_Connect_SDK/doc/latest/nrf/libraries/networking/aws_iot.html#programming-the-certificates-to-the-on-board-modem-of-the-nrf9160-based-kit).
