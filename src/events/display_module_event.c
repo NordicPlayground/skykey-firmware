@@ -13,7 +13,9 @@ static char *get_evt_type_str(enum display_module_event_type type)
 	switch (type) {
 	case DISPLAY_EVT_PLATFORM_CHOSEN:
 		return "DISPLAY_EVT_PLATFORM_CHOSEN";
-	case DISPLAY_EVT_ERROR:
+	case DISPLAY_EVT_REQUEST_PLATFORMS:
+		return "DISPLAY_EVT_REQUEST_PLATFORMS";
+	case DISPLAY_EVT_ERROR: 
 		return "DISPLAY_EVT_ERROR";
 	default:
 		return "Unknown event";
@@ -24,13 +26,16 @@ static int log_event(const struct event_header *eh, char *buf,
 		     size_t buf_len)
 {
 	const struct display_module_event *event = cast_display_module_event(eh);
-
-	if (event->type == DISPLAY_EVT_ERROR) {
-		return snprintf(buf, buf_len, "%s - Error code %d",
-				get_evt_type_str(event->type), event->data.err);
+	switch (event->type) {
+		case DISPLAY_EVT_ERROR:
+			return snprintf(buf, buf_len, "%s - Error code %d",
+							get_evt_type_str(event->type), event->data.err);
+		case DISPLAY_EVT_PLATFORM_CHOSEN:
+			return snprintf(buf, buf_len, "%s: %s",
+							get_evt_type_str(event->type), event->data.choice);
+		default:
+			return snprintf(buf, buf_len, "%s", get_evt_type_str(event->type));
 	}
-
-	return snprintf(buf, buf_len, "%s", get_evt_type_str(event->type));
 }
 
 #if defined(CONFIG_PROFILER)

@@ -1,0 +1,29 @@
+
+# TODO: Set up proper select and/or depends on clauses
+menuconfig CLOUD_MODULE
+    bool "Enable cloud module"
+    default y
+    help
+        Enables cloud module.
+    
+if CLOUD_MODULE
+    config CLOUD_THREAD_STACK_SIZE
+    int "Cloud module thread stack size"
+    default 2560
+
+    config CLOUD_CONNECT_RETRIES
+    int "Cloud connection retries"
+    default 16
+    help
+      Maximum number of cloud connection retries.
+
+    config CLOUD_DOWNLOAD_URL_MAX_LEN
+    int "Maximum length for the URL entry of the shadow update"
+    default 256
+    
+
+    module = CLOUD_MODULE
+    module-str = Cloud module
+    source "subsys/logging/Kconfig.template.log_config"
+endif #CLOUD_MODULE
+

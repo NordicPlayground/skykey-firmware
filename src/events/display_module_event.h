@@ -19,14 +19,16 @@
 extern "C" {
 #endif
 
+#ifdef CONFIG_DISPLAY_MODULE
+#define CHOICE_LEN CONFIG_DISPLAY_LIST_ENTRY_MAX_LEN
+#else
+#define CHOICE_LEN 10
+#endif
 /** @brief Display event types submitted by display module. */
 enum display_module_event_type {
 	DISPLAY_EVT_PLATFORM_CHOSEN,
-	DISPLAY_EVT_ERROR
-};
-
-struct display_module_data {
-	char* platform;
+	DISPLAY_EVT_REQUEST_PLATFORMS,
+	DISPLAY_EVT_ERROR,
 };
 
 /** @brief Display event. */
@@ -35,7 +37,7 @@ struct display_module_event {
 	enum display_module_event_type type;
 
 	union {
-		struct display_module_data choice;
+		char choice[CHOICE_LEN];
 		/* Module ID, used when acknowledging shutdown requests. */
 		uint32_t id;
 		int err;

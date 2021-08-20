@@ -1,0 +1,32 @@
+
+menuconfig DOWNLOAD_MODULE
+    bool "Enable download module"
+    default y
+    help
+        Enables download module.
+    
+if DOWNLOAD_MODULE
+    config DOWNLOAD_THREAD_STACK_SIZE
+    int "Download module thread stack size"
+    default 4096
+
+    config DOWNLOAD_FILE_MAX_SIZE_BYTES
+    int "Maximum number of bytes for the file to download"
+    default 2048
+
+    config DOWNLOAD_STREAM_FLASH_DEBUG
+    bool "Enable stream flash debugging"
+    default y
+
+    config DOWNLOAD_SOCKET_RETRIES
+        int "Number of retries for socket-related download issues"
+        default 2
+
+    config DOWNLOAD_PROGRESS_EVT
+        bool "Emit progress event upon receiving a download fragment"
+
+    module = DOWNLOAD_MODULE
+    module-str = Download module
+    source "subsys/logging/Kconfig.template.log_config"
+endif #DOWNLOAD_MODULE
+

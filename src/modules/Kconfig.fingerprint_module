@@ -1,0 +1,16 @@
+
+menuconfig FINGERPRINT_MODULE
+    bool "Enable password module"
+    default y
+    select FINGERPRINT
+    select SEN0348
+    help
+        Enables fingerprint module.
+    
+if FINGERPRINT_MODULE
+
+    module = FINGERPRINT_MODULE
+    module-str = Fingerprint module
+    source "subsys/logging/Kconfig.template.log_config"
+endif #FINGERPRINT_MODULE
+

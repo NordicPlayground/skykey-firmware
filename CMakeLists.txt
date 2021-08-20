@@ -11,6 +11,10 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE ZDebug)
 endif()
 
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+
 if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}")
   message(FATAL_ERROR
           "Board ${BOARD} is not supported.\n"
@@ -47,6 +51,7 @@ target_include_directories(app PRIVATE src)
 # Application directories
 add_subdirectory(src/modules)
 add_subdirectory(src/events)
+add_subdirectory(src/util)
 
 add_subdirectory_ifdef(CONFIG_DISPLAY_MODULE src/display)
 # Include configuration headers

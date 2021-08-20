@@ -1,0 +1,20 @@
+menuconfig FILE_UTIL
+	bool "File reading/writing utils"
+    default y
+
+if FILE_UTIL
+
+module = FILE_UTIL
+module-str = File utilities
+source "subsys/logging/Kconfig.template.log_config"
+endif # FILE_UTIL
+
+menuconfig PARSE_UTIL
+    bool "Util for reading entries"
+    default y
+
+if PARSE_UTIL
+module = PARSE_UTIL
+module-str = Entry utilities
+source "subsys/logging/Kconfig.template.log_config"
+endif # PARSE_UTIL

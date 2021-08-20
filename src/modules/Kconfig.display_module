@@ -15,6 +15,8 @@ menuconfig DISPLAY_MODULE
 	select LVGL_USE_PAGE
 	select LVGL_USE_LIST
 	select LVGL_USE_GROUP
+	help
+    Enables display module.
 
 if DISPLAY_MODULE
 
@@ -25,6 +27,14 @@ config DISPLAY_DEV_NAME
 config DISPLAY_THREAD_STACK_SIZE
 	int "Display module thread stack size"
 	default 2560
+
+config DISPLAY_LIST_ENTRY_MAX_NUM
+	int "Upper bound for number of entries"
+	default 10
+
+config DISPLAY_LIST_ENTRY_MAX_LEN
+	int "max entry length"
+	default 20
 
 # Display-specific settings
 
@@ -55,9 +65,9 @@ config LVGL_COLOR_16_SWAP
 
 endif #ST7789V
 
-
-endif #DISPLAY_MODULE
-
 module = DISPLAY_MODULE
 module-str = Display module
 source "subsys/logging/Kconfig.template.log_config"
+
+endif #DISPLAY_MODULE
+

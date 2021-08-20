@@ -6,11 +6,11 @@
 
 menu "Skykey Firmware"
 
-rsource "src/modules/Kconfig.modules_common"
-rsource "src/modules/Kconfig.display_module"
-
+rsource "src/modules/Kconfig"
 
 rsource "src/events/Kconfig"
+
+rsource "src/util/Kconfig"
 
 rsource "drivers/Kconfig"
 endmenu

@@ -1,4 +1,6 @@
 #include "display/display_ui.h"
+#include <zephyr.h>
+#include "parse_util.h"
 
 ///////////////////// VARIABLES ////////////////////
 lv_obj_t * scr_welcome;
@@ -62,8 +64,10 @@ int get_scr_index(lv_obj_t* scr) {
 
 ///////////////////// COMPONENT BUILDING ////////////////////
 
-void generate_list(lv_obj_t* list, const char* opts[], const int num_opts) {
+void generate_list(lv_obj_t *list, const char opts[CONFIG_DISPLAY_LIST_ENTRY_MAX_NUM][CONFIG_DISPLAY_LIST_ENTRY_MAX_LEN], const int num_opts)
+{
     /*Create a list*/
+    lv_list_clean(list);
     lv_obj_set_size(list, DISP_WIDTH-20, DISP_HEIGHT-50);
     lv_obj_align(list, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -10);
 
@@ -80,40 +84,51 @@ void generate_list(lv_obj_t* list, const char* opts[], const int num_opts) {
     }
 }
 
-void set_platform_list_contents(const char* folder_name) 
+//Not in use right now. Should be used from folder screen eventually
+void set_scr_platform_select(const char *folder_name)
 {
-    lv_list_clean(select_platform_list);
-    if (!strcmp(folder_name, "Folder 1")) {
-        const char* opts[] = {"GitHub", "Microsoft", "Stuff"};
-        generate_list(select_platform_list, opts, 3);
-    } else if (!strcmp(folder_name, "Folder 2")) {
-        const char* opts[] = {"Facebook", "Myspace", "Snapchat"};
-        generate_list(select_platform_list, opts, 3);
-    } else if (!strcmp(folder_name, "Folder 3")) {
-        const char* opts[] = {"Nordnet", "Sparebank1", "DNB"};
-        generate_list(select_platform_list, opts, 3);
-    } else {
-        const char* opts[] = {"Placeholder 1", "Placeholder 2", "Placeholder 3"};
-        generate_list(select_platform_list, opts, 3);
-    };
-    return;
-}
-
-
-void set_scr_platform_select(const char* folder_name) 
-{
-    lv_label_set_text(select_platform_label, folder_name);
-    
+    lv_label_set_text(select_platform_label, "Select platform");
     select_platform_list = lv_list_create(scr_select_platform, NULL);
-    set_platform_list_contents(folder_name);
     select_platform_list_group = lv_group_create();
     lv_group_add_obj(select_platform_list_group, select_platform_list);
 }
 
-void set_scr_folder_select(const char* folder_opts[], const int num_opts) 
+void set_platform_list_contents(const char *platform_names)
+{
+    lv_list_clean(select_platform_list);
+    /*Create a list*/
+    lv_obj_set_size(select_platform_list, DISP_WIDTH - 20, DISP_HEIGHT - 50);
+    lv_obj_align(select_platform_list, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -10);
+
+    static lv_style_t style_btn;
+    lv_style_init(&style_btn);
+    lv_style_set_bg_color(&style_btn, LV_BTN_STATE_DISABLED, nordic_blue);
+    lv_style_set_value_color(&style_btn, LV_BTN_STATE_DISABLED, LV_COLOR_WHITE);
+    /*Add buttons to the list*/
+    lv_obj_t *list_btn;
+
+    char opts[CONFIG_DISPLAY_LIST_ENTRY_MAX_NUM][CONFIG_DISPLAY_LIST_ENTRY_MAX_LEN];
+    int num_opts = 0;
+    char* rest = (char*)platform_names;
+    char* token = strtok_r(rest, "\t", &rest);
+    while (token != NULL)
+    {
+        strncpy(opts[num_opts], token, CONFIG_DISPLAY_LIST_ENTRY_MAX_LEN);
+        num_opts++;
+        if (num_opts > CONFIG_DISPLAY_LIST_ENTRY_MAX_NUM) {
+            // LOG_ERR("Number of platform options exceed the maximum configurated value. Consider increasing CONFIG_DISPLAY_LIST_ENTRY_MAX_NUM.");
+            break;
+        }
+        token = strtok_r(NULL, "\t", &rest);
+    }
+    generate_list(select_platform_list, opts, num_opts);
+    return;
+}
+
+    void set_scr_folder_select(const char *folder_opts[], const int num_opts)
 {
     select_folder_list = lv_list_create(scr_select_folder, NULL);
-    generate_list(select_folder_list, folder_opts, num_opts);
+    // generate_list(select_folder_list, folder_opts, num_opts);
     select_folder_list_group = lv_group_create();
     lv_group_add_obj(select_folder_list_group, select_folder_list);
 }
@@ -152,8 +167,6 @@ void build_pages(void)
     lv_label_set_align(select_folder_label, LV_LABEL_ALIGN_LEFT);
     lv_label_set_text(select_folder_label, "Folder select");
     lv_obj_align(select_folder_label, scr_select_folder, LV_ALIGN_IN_TOP_LEFT, 10, 10);
-    const char* folder_opts[] = {"Welcome!", "Folder 1", "Folder 2", "Folder 3", "Folder 4", "Folder 5"};
-    set_scr_folder_select(folder_opts, 6);
 
     /* Platform select screen */
     scr_select_platform = lv_obj_create(NULL, NULL);
@@ -163,6 +176,9 @@ void build_pages(void)
     lv_label_set_align(select_platform_label, LV_LABEL_ALIGN_LEFT);
     lv_label_set_text(select_platform_label, "Platform select");
     lv_obj_align(select_platform_label, scr_select_platform, LV_ALIGN_IN_TOP_LEFT, 10, 10);
+    select_platform_list = lv_list_create(scr_select_platform, NULL);
+    select_platform_list_group = lv_group_create();
+    lv_group_add_obj(select_platform_list_group, select_platform_list);
 }
 
 void lvgl_widgets_init(void) {
@@ -176,7 +192,8 @@ void hw_button_pressed(uint32_t btn_id) {
     int scr_index = get_scr_index(lv_scr_act());
     switch (scr_index) {
         case SCR_WELCOME:
-            change_screen(scr_select_folder, LV_SCR_LOAD_ANIM_MOVE_LEFT, 1000, 0);
+            // change_screen(scr_select_folder, LV_SCR_LOAD_ANIM_MOVE_LEFT, 1000, 0);
+            change_screen(scr_select_platform, LV_SCR_LOAD_ANIM_MOVE_LEFT, 1000, 0);
         break;
         case SCR_SELECT_FOLDER:
         if (btn_id == BTN_DOWN) {
@@ -203,7 +220,8 @@ struct display_data hw_button_long_pressed(uint32_t btn_id) {
     int scr_index = get_scr_index(lv_scr_act());
     switch (scr_index) {
         case SCR_WELCOME:
-            change_screen(scr_select_folder, LV_SCR_LOAD_ANIM_MOVE_LEFT, 1000, 0);
+            // change_screen(scr_select_folder, LV_SCR_LOAD_ANIM_MOVE_LEFT, 1000, 0);
+            change_screen(scr_select_platform, LV_SCR_LOAD_ANIM_MOVE_LEFT, 1000, 0);
         break;
         case SCR_SELECT_FOLDER:
         if (btn_id == BTN_UP) {
@@ -211,7 +229,7 @@ struct display_data hw_button_long_pressed(uint32_t btn_id) {
             if (!strcmp(selected_folder, "Welcome!")) {
                 change_screen(scr_welcome, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 1000, 0);
             } else {
-                set_scr_platform_select(selected_folder);
+                // set_scr_platform_select(selected_folder);
                 change_screen(scr_select_platform, LV_SCR_LOAD_ANIM_MOVE_LEFT, 1000, 0);
             }
         } else if (btn_id == BTN_DOWN) {
@@ -221,11 +239,18 @@ struct display_data hw_button_long_pressed(uint32_t btn_id) {
         case SCR_SELECT_PLATFORM:
         if (btn_id == BTN_UP) {
             info.id = DISPLAY_PLATFORM_CHOSEN;
-            info.data = lv_label_get_text(lv_list_get_btn_label(lv_list_get_btn_selected(select_platform_list)));
+            char *chosen_label = lv_label_get_text(lv_list_get_btn_label(lv_list_get_btn_selected(select_platform_list)));
+
+            strncpy(info.data, chosen_label, CONFIG_DISPLAY_LIST_ENTRY_MAX_LEN);
+            // info.data = lv_label_get_text(lv_list_get_btn_label(lv_list_get_btn_selected(select_platform_list)));
         } else if (btn_id == BTN_DOWN) {
-            /* Go to the top of the list, change the screen */
-            lv_list_focus_btn(select_folder_list, lv_list_get_next_btn(select_folder_list, NULL));
-            change_screen(scr_select_folder, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 1000, 0);
+            // /* Go to the top of the list, change the screen */
+            // lv_list_focus_btn(select_folder_list, lv_list_get_next_btn(select_folder_list, NULL));
+            // change_screen(scr_select_folder, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 1000, 0);
+
+            /*For now, support only single level structure*/
+            lv_list_focus_btn(select_platform_list, lv_list_get_next_btn(select_platform_list, NULL));
+            change_screen(scr_welcome, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 1000, 0);
         }
         break;
     }

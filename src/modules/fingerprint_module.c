@@ -4,7 +4,7 @@
 
 #include "../../drivers/fingerprint/api.h"
 
-#define MODULE fingerprint_sensor
+#define MODULE fingerprint_module
 #include <event_manager.h>
 #include <caf/events/click_event.h>
 #include <caf/events/module_state_event.h>
