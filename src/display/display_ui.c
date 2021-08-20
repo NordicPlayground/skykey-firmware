@@ -1,5 +1,6 @@
 #include "display/display_ui.h"
 #include <zephyr.h>
+#include "parse_util.h"
 
 ///////////////////// VARIABLES ////////////////////
 lv_obj_t * scr_welcome;
@@ -108,17 +109,17 @@ void set_platform_list_contents(const char *platform_names)
 
     char opts[CONFIG_DISPLAY_LIST_ENTRY_MAX_NUM][CONFIG_DISPLAY_LIST_ENTRY_MAX_LEN];
     int num_opts = 0;
-    char* token = strtok((char*)platform_names, " ");
+    char* rest = (char*)platform_names;
+    char* token = strtok_r(rest, "\t", &rest);
     while (token != NULL)
     {
-        printk("%s\n",token);
         strncpy(opts[num_opts], token, CONFIG_DISPLAY_LIST_ENTRY_MAX_LEN);
         num_opts++;
         if (num_opts > CONFIG_DISPLAY_LIST_ENTRY_MAX_NUM) {
             // LOG_ERR("Number of platform options exceed the maximum configurated value. Consider increasing CONFIG_DISPLAY_LIST_ENTRY_MAX_NUM.");
             break;
         }
-        token = strtok(NULL, " ");
+        token = strtok_r(NULL, "\t", &rest);
     }
     generate_list(select_platform_list, opts, num_opts);
     return;

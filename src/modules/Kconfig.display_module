@@ -34,7 +34,7 @@ config DISPLAY_LIST_ENTRY_MAX_NUM
 
 config DISPLAY_LIST_ENTRY_MAX_LEN
 	int "max entry length"
-	default 10
+	default 20
 
 # Display-specific settings
 

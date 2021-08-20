@@ -22,7 +22,7 @@
 
 #include "modules_common.h"
 #include "util/file_util.h"
-
+#include "util/parse_util.h"
 #include <logging/log.h>
 LOG_MODULE_REGISTER(MODULE, CONFIG_PASSWORD_MODULE_LOG_LEVEL);
 
@@ -78,46 +78,38 @@ int decrypt_file(void) {
  * platform entry is the first word on each new line.
  * @return Negative ERRNO on failure. 0 on success.
 */
-int get_available_platforms(void) {
+int get_available_accounts(void)
+{
 	int err;
 	err = decrypt_file();
-	if (err) {
+	if (err)
+	{
 		LOG_WRN("Could not decrypt file.");
 		return err;
 	}
 	memset(entries_buf, '\0', ENTRIES_BUF_MAX_LEN * sizeof(uint8_t));
-	char *token = strtok((char *)plaintext_buf, " ");
-	char platform[CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN];
-	int offset = 0;
-	while (token != NULL)
-	{
-		if (strlen(token) > CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN)
-		{
-			strncpy(platform, token, CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN-3);
-			strncat(platform, "...", 3);
-			LOG_INF("Entry %s exceeds CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN. Altered entry name: %s", token, platform);
-		} else {
-			strncpy(platform, token, CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN);
-		}
-		strncat(platform, " ", 1);
-		if (offset+strlen(platform) > ENTRIES_BUF_MAX_LEN) {
-			LOG_WRN("Size of entries exceeded max buffer length. Some entries will be lost. Consider increasing CONFIG_PASSWORD_ENTRY_MAX_NUM");
-			err = -ENOBUFS;
-			break;
-		}
-		strncpy(entries_buf + offset, platform, CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN + 1);
-		offset += strlen(platform);
-		token = strtok(NULL, "\n"); //First word of next line
-		token = strtok(NULL, " ");
-	}
-	if (offset>0) {
-		entries_buf[offset - 1] = '\0'; //remove trailing space
-	}
-	memset(plaintext_buf, '\0', READ_BUF_LEN); // Don't keep plaintext buffer in memory
+	err = parse_entries(plaintext_buf, entries_buf, ENTRIES_BUF_MAX_LEN, ENTRY_ACCOUNT);
 	return err;
 }
 
-
+/**
+ * Scans plaintext buffer for platforms. Right now, it assumes that the 
+ * platform entry is the first word on each new line.
+ * @return Negative ERRNO on failure. 0 on success.
+*/
+int get_available_passwords(void)
+{
+	int err;
+	err = decrypt_file();
+	if (err)
+	{
+		LOG_WRN("Could not decrypt file.");
+		return err;
+	}
+	memset(entries_buf, '\0', ENTRIES_BUF_MAX_LEN * sizeof(uint8_t));
+	err = parse_entries(plaintext_buf, entries_buf, ENTRIES_BUF_MAX_LEN, ENTRY_PASSWORD);
+	return err;
+}
 
 //========================================================================================
 /*                                                                                      *
@@ -200,27 +192,31 @@ static void module_thread_fn(void)
 		SEND_ERROR(password, PASSWORD_EVT_ERROR, err);
 	}
 	/*Here temporarily for testing purposes*/
-	// file_extract_content(encrypted_buf, READ_BUF_LEN);
-	// get_available_platforms();
-	// struct password_module_event *event = new_password_module_event();
-	// event->type = PASSWORD_EVT_READ_PLATFORMS;
-	// memcpy(event->data.entries, entries_buf, ENTRIES_BUF_MAX_LEN*sizeof(uint8_t));
-	// EVENT_SUBMIT(event);
 	while (true)
 	{
 
 		module_get_next_msg(&self, &msg, K_FOREVER);
 		if (IS_EVENT((&msg), display, DISPLAY_EVT_REQUEST_PLATFORMS)) {
-
+			file_extract_content(encrypted_buf, READ_BUF_LEN);
+			get_available_accounts();
+			struct password_module_event *event = new_password_module_event();
+			event->type = PASSWORD_EVT_READ_PLATFORMS;
+			memcpy(event->data.entries, entries_buf, ENTRIES_BUF_MAX_LEN * sizeof(uint8_t));
+			EVENT_SUBMIT(event);
 		}
 		if (IS_EVENT((&msg), display, DISPLAY_EVT_PLATFORM_CHOSEN)) {
-			file_extract_content(encrypted_buf, READ_BUF_LEN);
+			decrypt_file();
+			char choice[CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN];
+			strncpy(choice, msg.module.display.data.choice, CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN);
+			char password[100]; //TODO: Make configurable
+			get_password(plaintext_buf, choice, password, 100);
+			LOG_DBG("Password: %s", log_strdup(password));
 		}
 		if (IS_EVENT((&msg), download, DOWNLOAD_EVT_DOWNLOAD_FINISHED)) {
 			/* Temporarily react to this event. Should react to DISPLAY_EVT_REQUEST_PLATFORMS 
 			   when we start supporting folder structure.*/
 			file_extract_content(encrypted_buf, READ_BUF_LEN);
-			get_available_platforms();
+			get_available_accounts();
 			struct password_module_event *event = new_password_module_event();
 			event->type = PASSWORD_EVT_READ_PLATFORMS;
 			memcpy(event->data.entries, entries_buf, ENTRIES_BUF_MAX_LEN * sizeof(uint8_t));

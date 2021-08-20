@@ -12,6 +12,7 @@
 #include <zephyr.h>
 #include <kernel.h>
 #include <event_manager.h>
+#include <stdint.h>
 #include <settings/settings.h>
 
 #include <caf/events/click_event.h>
@@ -80,14 +81,38 @@ static bool event_handler(const struct event_header *eh)
     return false;
 }
 
+int setup(void) {
+	int err = 0;
+	const struct device *display_dev;
+	display_dev = device_get_binding(CONFIG_LVGL_DISPLAY_DEV_NAME);
+	err = device_is_ready(display_dev);
+	if (!err) {
+		LOG_ERR("Device not ready: %d", err);
+	}
+	err = display_blanking_off(display_dev);
+	if (err) {
+		LOG_ERR("Display blanking error: %d", err);
+	}
+	lvgl_widgets_init();
+	struct display_module_event *display_module_event =
+		new_display_module_event();
+
+	display_module_event->type = DISPLAY_EVT_REQUEST_PLATFORMS;
+	EVENT_SUBMIT(display_module_event);
+	return 0;
+}
+
 static void module_thread_fn(void) 
 {
 	LOG_DBG("Display module thread started");
 	int err;
 	struct display_msg_data msg;
-	const struct device *display_dev;
-	display_dev = device_get_binding(CONFIG_LVGL_DISPLAY_DEV_NAME);
 	self.thread_id = k_current_get();
+	
+	err = setup();
+	if (err) {
+		SEND_ERROR(display, DISPLAY_EVT_ERROR, err);
+	}
 
 	err = module_start(&self);
 	if (err) {
@@ -95,23 +120,10 @@ static void module_thread_fn(void)
 		SEND_ERROR(display, DISPLAY_EVT_ERROR, err); 
 	}
 
-	// err = setup() {
-	// 	LOG_ERR("setup, error: %d", err);
-	// }
-
-	if (display_dev == NULL) {
-		LOG_ERR("device not found.  Aborting test.");
-		return;
-	}
-
-
-	lvgl_widgets_init();
-
 	lv_task_handler();
-	display_blanking_off(display_dev);
 	while (1) {
 		int err = module_get_next_msg(&self, &msg, K_MSEC(5));
-		if (err == 0) {
+		if (!err) {
 			if (IS_EVENT((&msg), password, PASSWORD_EVT_READ_PLATFORMS)) {
 				LOG_WRN("PASSWORD_EVT_READ_PLATFORMS");
 				set_platform_list_contents((const char*)msg.module.password.data.entries);

@@ -188,6 +188,7 @@ static int download_client_callback(const struct download_client_evt *event)
 				return err;
 			}
 			if (file_size > CONFIG_DOWNLOAD_FILE_MAX_SIZE_BYTES) {
+				LOG_ERR("File size (%dB) too big", file_size);
 				SEND_ERROR(download, DOWNLOAD_EVT_ERROR, -EFBIG);
 				return -EFBIG;
 			}
