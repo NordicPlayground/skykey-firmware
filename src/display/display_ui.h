@@ -15,7 +15,6 @@ struct display_data {
 
 enum display_data_type {
     DISPLAY_NO_DATA,
-    DISPLAY_FOLDER_CHOSEN,
     DISPLAY_PLATFORM_CHOSEN
 };
 
