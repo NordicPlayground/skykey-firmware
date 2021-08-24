@@ -15,6 +15,8 @@ static char *get_evt_type_str(enum display_module_event_type type)
 		return "DISPLAY_EVT_PLATFORM_CHOSEN";
 	case DISPLAY_EVT_REQUEST_PLATFORMS:
 		return "DISPLAY_EVT_REQUEST_PLATFORMS";
+	case DISPLAY_EVT_SHUTDOWN_READY:
+		return "DISPLAY_EVT_SHUTDOWN_READY";
 	case DISPLAY_EVT_ERROR: 
 		return "DISPLAY_EVT_ERROR";
 	default:

@@ -12,3 +12,4 @@ target_sources_ifdef(CONFIG_DOWNLOAD_MODULE app PRIVATE ${CMAKE_CURRENT_SOURCE_D
 target_sources_ifdef(CONFIG_PASSWORD_MODULE app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/password_module.c)
 target_sources_ifdef(CONFIG_FINGERPRINT_MODULE app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/fingerprint_module.c)
 target_sources_ifdef(CONFIG_MODEM_MODULE app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/modem_module.c)
+target_sources_ifdef(CONFIG_LOCK_MODULE app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/lock_module.c)

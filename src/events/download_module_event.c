@@ -13,16 +13,18 @@ static char *get_evt_type_str(enum download_module_event_type type)
 	// TODO: Implement once all event types have been defined.
 	switch (type)
 	{
-	case DOWNLOAD_EVT_ERROR:
-		return "DOWNLOAD_EVT_ERROR";
 	case DOWNLOAD_EVT_DOWNLOAD_STARTED:
 		return "DOWNLOAD_EVT_DOWNLOAD_STARTED";
 	case DOWNLOAD_EVT_DOWNLOAD_FINISHED:
 		return "DOWNLOAD_EVT_DOWNLOAD_FINISHED";
 	case DOWNLOAD_EVT_STORAGE_ERROR:
 		return "DOWNLOAD_EVT_STORAGE_ERROR";
+	case DOWNLOAD_EVT_SHUTDOWN_READY:
+		return "DOWNLOAD_EVT_SHUTDOWN_READY";
+	case DOWNLOAD_EVT_ERROR:
+		return "DOWNLOAD_EVT_ERROR";
 	default:
-		return "";
+		return "Unknown event";
 	}
 }
 

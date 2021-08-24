@@ -47,6 +47,10 @@ enum module_id {
 	PASSWORD_MODULE_EVENT
 };
 
+/* Display module states. */
+static enum state_type { STATE_ACTIVE,
+						 STATE_SHUTDOWN
+} state;
 
 /**
  * Numbers describe the index of the buttons defined in buttons_def.h
