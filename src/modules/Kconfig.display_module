@@ -65,6 +65,13 @@ config LVGL_COLOR_16_SWAP
 
 endif #ST7789V
 
+if LVGL_USE_ANIMATION
+	config DISPLAY_ANIMATION_TRANSITION_TIME_MSEC
+	int "Transition time for screen loading"
+	default 1000
+
+endif #LVGL_USE_ANIMATION
+
 module = DISPLAY_MODULE
 module-str = Display module
 source "subsys/logging/Kconfig.template.log_config"
