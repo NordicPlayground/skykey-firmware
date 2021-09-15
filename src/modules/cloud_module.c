@@ -21,6 +21,7 @@
 #include "events/cloud_module_event.h"
 #include "events/download_module_event.h"
 #include "events/modem_module_event.h"
+#include "util/cjson_util.h"
 
 #define MODULE cloud_module
 
@@ -40,17 +41,20 @@ struct cloud_msg_data
 };
 
 /* Cloud module super states. */
-static enum state_type { 
-	STATE_LTE_DISCONNECTED,
-	STATE_LTE_CONNECTED,
-	STATE_SHUTDOWN,
+static enum state_type { STATE_LTE_DISCONNECTED,
+						 STATE_LTE_CONNECTED,
+						 STATE_SHUTDOWN,
 } state;
 
 /* Cloud module sub states. */
-static enum sub_state_type { 
-	SUB_STATE_CLOUD_DISCONNECTED,
-	SUB_STATE_CLOUD_CONNECTED,
+static enum sub_state_type { SUB_STATE_CLOUD_DISCONNECTED,
+							 SUB_STATE_CLOUD_CONNECTED,
 } sub_state;
+
+/* Cloud module download states. */
+static enum download_state_type { DOWNLOAD_STATE_FREE,
+								  DOWNLOAD_STATE_DOWNLOADING,
+} pwd_download_state;
 
 /**
  * @brief Work item used to check if a cloud connection is established.
@@ -64,10 +68,7 @@ struct cloud_backoff_delay_lookup
 
 /* Lookup table for backoff reconnection to cloud. Binary scaling. */
 static struct cloud_backoff_delay_lookup backoff_delay[] = {
-	{32}, {64}, {128}, {256}, {512}, {2048},
-	{4096}, {8192}, {16384}, {32768}, {65536},
-	 {131072}, {262144}, {524288}, {1048576}
-};
+	{32}, {64}, {128}, {256}, {512}, {2048}, {4096}, {8192}, {16384}, {32768}, {65536}, {131072}, {262144}, {524288}, {1048576}};
 
 /* Variable that keeps track of how many times a reconnection to cloud
  * has been tried without success.
@@ -120,6 +121,19 @@ static char *sub_state2str(enum sub_state_type new_state)
 	}
 }
 
+static char *download_state2str(enum download_state_type new_state)
+{
+	switch (new_state)
+	{
+	case DOWNLOAD_STATE_FREE:
+		return "DOWNLOAD_STATE_FREE";
+	case DOWNLOAD_STATE_DOWNLOADING:
+		return "DOWNLOAD_STATE_DOWNLOADING";
+	default:
+		return "Unknown";
+	}
+}
+
 static void state_set(enum state_type new_state)
 {
 	if (new_state == state)
@@ -148,6 +162,21 @@ static void sub_state_set(enum sub_state_type new_state)
 			sub_state2str(new_state));
 
 	sub_state = new_state;
+}
+
+static void pwd_download_state_set(enum download_state_type new_state)
+{
+	if (new_state == pwd_download_state)
+	{
+		LOG_DBG("Password download state: %s", download_state2str(pwd_download_state));
+		return;
+	}
+
+	LOG_DBG("Password download state transition %s --> %s",
+			download_state2str(pwd_download_state),
+			download_state2str(new_state));
+
+	pwd_download_state = new_state;
 }
 
 //========================================================================================
@@ -184,34 +213,34 @@ static int populate_app_endpoint_topics(void)
 {
 	int err;
 
-// 	err = snprintf(batch_topic, sizeof(batch_topic), BATCH_TOPIC,
-// 				   client_id_buf);
-// 	if (err != BATCH_TOPIC_LEN)
-// 	{
-// 		return -ENOMEM;
-// 	}
+	// 	err = snprintf(batch_topic, sizeof(batch_topic), BATCH_TOPIC,
+	// 				   client_id_buf);
+	// 	if (err != BATCH_TOPIC_LEN)
+	// 	{
+	// 		return -ENOMEM;
+	// 	}
 
-// 	pub_topics[0].str = batch_topic;
-// 	pub_topics[0].len = BATCH_TOPIC_LEN;
+	// 	pub_topics[0].str = batch_topic;
+	// 	pub_topics[0].len = BATCH_TOPIC_LEN;
 
-// 	err = snprintf(messages_topic, sizeof(messages_topic), MESSAGES_TOPIC,
-// 				   client_id_buf);
-// 	if (err != MESSAGES_TOPIC_LEN)
-// 	{
-// 		return -ENOMEM;
-// 	}
+	// 	err = snprintf(messages_topic, sizeof(messages_topic), MESSAGES_TOPIC,
+	// 				   client_id_buf);
+	// 	if (err != MESSAGES_TOPIC_LEN)
+	// 	{
+	// 		return -ENOMEM;
+	// 	}
 
-// 	pub_topics[1].str = messages_topic;
-// 	pub_topics[1].len = MESSAGES_TOPIC_LEN;
+	// 	pub_topics[1].str = messages_topic;
+	// 	pub_topics[1].len = MESSAGES_TOPIC_LEN;
 
-// 	err = snprintf(cfg_topic, sizeof(cfg_topic), CFG_TOPIC, client_id_buf);
-// 	if (err != CFG_TOPIC_LEN)
-// 	{
-// 		return -ENOMEM;
-// 	}
+	// 	err = snprintf(cfg_topic, sizeof(cfg_topic), CFG_TOPIC, client_id_buf);
+	// 	if (err != CFG_TOPIC_LEN)
+	// 	{
+	// 		return -ENOMEM;
+	// 	}
 
-// 	sub_topics[0].str = cfg_topic;
-// 	sub_topics[0].len = CFG_TOPIC_LEN;
+	// 	sub_topics[0].str = cfg_topic;
+	// 	sub_topics[0].len = CFG_TOPIC_LEN;
 
 	// err = snprintf(update_delta_topic, sizeof(update_delta_topic), UPDATE_DELTA_TOPIC,
 	// 			   client_id_buf);
@@ -220,7 +249,6 @@ static int populate_app_endpoint_topics(void)
 	// 	return -ENOMEM;
 	// }
 
-
 	// err = snprintf(get_accepted_topic, sizeof(get_accepted_topic), GET_ACCEPTED_TOPIC,
 	// 			   client_id_buf);
 	// if (err != GET_ACCEPTED_TOPIC_LEN)
@@ -228,14 +256,13 @@ static int populate_app_endpoint_topics(void)
 	// 	return -ENOMEM;
 	// }
 
-
-// 	err = aws_iot_subscription_topics_add(sub_topics,
-// 										  ARRAY_SIZE(sub_topics));
-// 	if (err)
-// 	{
-// 		LOG_ERR("cloud_ep_subscriptions_add, error: %d", err);
-// 		return err;
-// 	}
+	// 	err = aws_iot_subscription_topics_add(sub_topics,
+	// 										  ARRAY_SIZE(sub_topics));
+	// 	if (err)
+	// 	{
+	// 		LOG_ERR("cloud_ep_subscriptions_add, error: %d", err);
+	// 		return err;
+	// 	}
 
 	return 0;
 }
@@ -271,12 +298,79 @@ static void connect_aws(void)
 /**
  * @brief Convenience macro for deleting root and returning an error on NULL.
  */
-#define NOT_NULL(expression, root, error) \
-	if (expression == NULL)               \
-	{                                     \
-		cJSON_Delete(root);               \
-		return -ENOMEM;                   \
+#define CJSON_EXIT(expression, root, error) \
+	if (expression == NULL)                 \
+	{                                       \
+		cJSON_Delete(root);                 \
+		return -ENOMEM;                     \
 	}
+
+/**
+ * @brief Informs the cloud that the password download failed.
+ */
+static void handle_password_download_failed(void)
+{
+	cJSON *root = cJSON_CreateObject();
+	cJSON *skykey_obj = cJSON_AddObjectToObjectCS(root, "skyKey");
+	cJSON *databaseLocation_obj = cJSON_AddStringToObjectCS(skykey_obj, "databaseLocation", "Download failed");
+	char *message = cJSON_PrintUnformatted(root);
+	struct aws_iot_data tx_data = {
+		.qos = MQTT_QOS_0_AT_MOST_ONCE,
+		.topic.type = AWS_IOT_SHADOW_TOPIC_UPDATE,
+		.ptr = message,
+		.len = strlen(message),
+	};
+	cJSON_free(message);
+	cJSON_Delete(root);
+	pwd_download_state_set(DOWNLOAD_STATE_FREE);
+}
+
+/**
+ * @brief Type for functions that handle a shadow delta and modifies the response.
+ * 
+ * @param desired_delta Shadow delta root. Should not be modified.
+ * @param response_root Response object. Any data written here will be reported to cloud.
+ * @return 0 on success, negative errno otherwise. Non-essential handlers should always return 0.
+ */
+typedef int (*shadow_delta_handler_t)(cJSON *desired_delta, cJSON *response_root);
+
+/**
+ * @brief Handles password database related deltas.	
+ * 
+ * @param desired_delta Shadow delta root. Should not be modified.
+ * @param response_root Response object. Any data written here will be reported to cloud.
+ * @return 0 on success, negative errno otherwise.
+ */
+static int handle_password_delta(cJSON *desired_delta, cJSON *response_root)
+{
+	cJSON *skykey_delta = cJSON_GetObjectItemCaseSensitive(desired_delta, "skyKey");
+	if (skykey_delta == NULL || !cJSON_IsObject(skykey_delta))
+	{
+		return 0;
+	}
+	cJSON *password_delta = cJSON_GetObjectItemCaseSensitive(skykey_delta, "databaseLocation");
+	if (password_delta != NULL && password_delta->type == cJSON_String)
+	{
+		struct cloud_module_event *evt = new_cloud_module_event();
+		evt->type = CLOUD_EVT_DATABASE_UPDATE_AVAILABLE;
+		strncpy(evt->data.url, password_delta->valuestring, sizeof(evt->data.url));
+		evt->data.url[sizeof(evt->data.url) - 1] = '\0'; // Ensure null termination
+		EVENT_SUBMIT(evt);
+		pwd_download_state_set(DOWNLOAD_STATE_DOWNLOADING);
+
+		cJSON *skykey_response = cJSON_GetOrAddObjectItemCS(response_root, "skyKey");
+		cJSON_AddStringToObjectCS(skykey_response, "databaseLocation", password_delta->valuestring);
+	}
+	return 0;
+}
+
+/**
+ * @brief Delta handler pipeline. Functions here will get called in order with the delta and response as arguments.
+ * Functions should return 0 on success, negative errno otherwise.
+ */
+static shadow_delta_handler_t shadow_delta_handlers[] = {
+	handle_password_delta,
+};
 
 /**
  * @brief Updates AWS device shadow.
@@ -296,62 +390,38 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 	last_handled_shadow = timestamp;
 
 	cJSON *root = cJSON_CreateObject();
-	NOT_NULL(root, root, -ENOMEM);
+	CJSON_EXIT(root, root, -ENOMEM);
 	cJSON *state = cJSON_AddObjectToObject(root, "state");
-	NOT_NULL(state, root, -ENOMEM);
+	CJSON_EXIT(state, root, -ENOMEM);
 	cJSON *reported = cJSON_AddObjectToObject(state, "reported");
-	NOT_NULL(reported, root, -ENOMEM);
+	CJSON_EXIT(reported, root, -ENOMEM);
 
 	int64_t msg_ts = 0; // Timestamp for shadow update.
-	int16_t batv = 0;	// Battery voltage
 
+	// TODO: Implement as delta handler
 	if (!date_time_now(&msg_ts))
 	{
-		NOT_NULL(cJSON_AddNumberToObject(reported, "ts", msg_ts), root, -ENOMEM);
+		CJSON_EXIT(cJSON_AddNumberToObject(reported, "ts", msg_ts), root, -ENOMEM);
 	}
 	else
+	{
 		LOG_WRN("Could not get timestamp.");
-
-	if (modem_info_short_get(MODEM_INFO_BATTERY, &batv) == sizeof(batv))
-	{
-		NOT_NULL(cJSON_AddNumberToObject(reported, "batv", batv), root, -ENOMEM);
-	}
-	else
-		LOG_WRN("Could not get battery voltage.");
-
-	// Dummy value for testing/POC.
-	cJSON *val_obj = cJSON_GetObjectItemCaseSensitive(delta, "value");
-	if (val_obj != NULL)
-	{
-		NOT_NULL(cJSON_AddNumberToObject(reported, "value", val_obj->valueint), root, -ENOMEM);
 	}
 
-	// TODO: Consider using AWS IoT Jobs instead of device shadow for updating database.
-	//This is a temporary solution for testing the downloading mechanism.
-	cJSON *delta_obj = cJSON_GetObjectItemCaseSensitive(delta, "desired");
-	cJSON *pwd_obj = cJSON_GetObjectItemCaseSensitive(delta_obj, "pwd");
-	if (pwd_obj != NULL)
+	// TODO: Call delta handlers.
+
+	for (int i = 0; i < sizeof(shadow_delta_handlers) / sizeof(shadow_delta_handlers[0]); i++)
 	{
-		cJSON *pwd_url_obj = cJSON_GetObjectItemCaseSensitive(pwd_obj, "url");
-		cJSON *pwd_ver_obj = cJSON_GetObjectItemCaseSensitive(pwd_obj, "v");
-		if (pwd_url_obj != NULL && pwd_ver_obj != NULL)
+		int ret = shadow_delta_handlers[i](delta, reported);
+		if (ret < 0)
 		{
-			char *url = pwd_url_obj->valuestring;
-			struct cloud_module_event *event = new_cloud_module_event();
-			event->type = CLOUD_EVT_DATABASE_UPDATE_AVAILABLE;
-			if (strlen(url) > CONFIG_CLOUD_DOWNLOAD_URL_MAX_LEN) {
-				LOG_ERR("URL length (%d) exceeded the configurated maximum length (%d).",
-					strlen(url), CONFIG_CLOUD_DOWNLOAD_URL_MAX_LEN);
-			} else {
-				strcpy(event->data.url, url);
-				EVENT_SUBMIT(event);
-			}
+			LOG_WRN("Delta handler with index %d returned %d", i, ret);
+			return ret;
 		}
-		cJSON_AddItemReferenceToObject(reported, "pwd", pwd_obj); // HACK: Echo password settings to remove it from delta. Again, this is not a good solution.
 	}
 
-	char *message = cJSON_Print(root);
-	NOT_NULL(message, root, -ENOMEM);
+	char *message = cJSON_PrintUnformatted(root);
+	CJSON_EXIT(message, root, -ENOMEM);
 
 	struct aws_iot_data tx_data = {
 		.qos = MQTT_QOS_0_AT_MOST_ONCE,
@@ -367,11 +437,10 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 	int err = 0;
 	return err;
 }
-#undef NOT_NULL
 
 static void handle_cloud_data(const struct aws_iot_data *msg)
 {
-	if (!strcmp(msg->topic.str, get_accepted_topic))
+	if (!strcmp(msg->topic.str, get_accepted_topic) || !strcmp(msg->topic.str, update_delta_topic))
 	{
 		cJSON *json = cJSON_Parse(msg->ptr);
 		cJSON *state = cJSON_GetObjectItemCaseSensitive(json, "state");
@@ -451,6 +520,14 @@ static void on_sub_state_cloud_connected(struct cloud_msg_data *msg)
 
 		return;
 	}
+
+	if (IS_EVENT(msg, download, DOWNLOAD_EVT_ERROR))
+	{
+	}
+
+	if (IS_EVENT(msg, download, DOWNLOAD_EVT_ERROR))
+	{
+	}
 }
 
 /* Message handler for SUB_STATE_CLOUD_DISCONNECTED. */
@@ -467,6 +544,21 @@ static void on_sub_state_cloud_disconnected(struct cloud_msg_data *msg)
 	if (IS_EVENT(msg, cloud, CLOUD_EVT_CONNECTION_TIMEOUT))
 	{
 		connect_aws();
+	}
+}
+
+static void on_password_download_state_downloading(struct cloud_msg_data *msg)
+{
+	if (IS_EVENT(msg, download, DOWNLOAD_EVT_DOWNLOAD_FINISHED))
+	{
+		LOG_DBG("Password download complete.");
+		pwd_download_state_set(DOWNLOAD_STATE_FREE);
+	}
+
+	if (IS_EVENT(msg, download, DOWNLOAD_EVT_ERROR) || IS_EVENT(msg, download, DOWNLOAD_EVT_STORAGE_ERROR))
+	{
+		LOG_DBG("Error %d while downloading passwords.", msg->module.download.data.err);
+		handle_password_download_failed();
 	}
 }
 
@@ -508,7 +600,8 @@ static bool event_handler(const struct event_header *eh)
 		enqueue_msg = true;
 	}
 
-	if (is_modem_module_event(eh)) {
+	if (is_modem_module_event(eh))
+	{
 		struct modem_module_event *evt = cast_modem_module_event(eh);
 		msg.module.modem = *evt;
 		enqueue_msg = true;
@@ -595,7 +688,8 @@ static int cloud_configure(void)
 
 	/* Retrieve device IMEI from modem. */
 	err = at_cmd_write("AT+CGSN", imei_buf, sizeof(imei_buf), NULL);
-	if (err) {
+	if (err)
+	{
 		LOG_ERR("Not able to retrieve device IMEI from modem");
 		return err;
 	}
@@ -607,7 +701,7 @@ static int cloud_configure(void)
 
 #else
 	snprintf(client_id_buf, sizeof(client_id_buf), "%s",
-		 CONFIG_CLOUD_CLIENT_ID);
+			 CONFIG_CLOUD_CLIENT_ID);
 #endif
 	/* Fetch IMEI from modem data and set IMEI as cloud connection ID **/
 	config.client_id = client_id_buf;
@@ -701,6 +795,13 @@ static void module_thread_fn(void)
 			{
 			case SUB_STATE_CLOUD_CONNECTED:
 				on_sub_state_cloud_connected(&msg);
+				switch (pwd_download_state)
+				{
+				case DOWNLOAD_STATE_DOWNLOADING:
+				{
+					on_password_download_state_downloading(&msg);
+				}
+				}
 				break;
 			case SUB_STATE_CLOUD_DISCONNECTED:
 				on_sub_state_cloud_disconnected(&msg);
