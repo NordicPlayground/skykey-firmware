@@ -20,7 +20,7 @@ LOG_MODULE_REGISTER(file_util, CONFIG_FILE_UTIL_LOG_LEVEL);
 
 static int log_contents(void);
 
-K_MUTEX_DEFINE(fs_mutex);
+static K_MUTEX_DEFINE(fs_mutex);
 
 FS_LITTLEFS_DECLARE_DEFAULT_CONFIG(storage);
 static struct fs_mount_t lfs_storage_mnt = {
@@ -107,6 +107,7 @@ int file_extract_content(void *read_buf, size_t read_buf_size) {
     int rc;
     rc = mount_fs();
     if (rc < 0) {
+        file_close_and_unmount();
         LOG_ERR("Failed in mounting file system: %d", rc);
         return rc;
     }
@@ -114,12 +115,14 @@ int file_extract_content(void *read_buf, size_t read_buf_size) {
     rc = fs_open(&file, filename, FS_O_READ);
     if (rc < 0)
     {
+        file_close_and_unmount();
         LOG_ERR("Failed in opening file: %d", rc);
         return rc;
     }
 
     rc = fs_read(&file, read_buf, read_buf_size);
     if (rc < 0) {
+        file_close_and_unmount();
         LOG_ERR("Failed in reading file: %d", rc);
         return rc;
     }
