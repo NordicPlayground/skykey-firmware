@@ -57,7 +57,7 @@ static struct module_data self = {
 
 static struct download_client dl_client;
 static struct download_client_cfg dl_client_cfg = {
-	.sec_tag = -1,
+	.sec_tag = CONFIG_DOWNLOAD_MODULE_SEC_TAG,
 	.apn = NULL,
 	.pdn_id = 0,
 	.frag_size_override = 0,
