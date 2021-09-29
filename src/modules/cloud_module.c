@@ -402,8 +402,12 @@ static int handle_lock_timeout_delta(cJSON *desired_delta, cJSON *response_root)
 	cJSON *lock_timeout_delta = cJSON_GetObjectItemCaseSensitive(skykey_delta, lock_timeout_prop_name);
 	if (lock_timeout_delta != NULL && lock_timeout_delta->type == cJSON_Number)
 	{
-		// TODO: Update lock timeout
+		struct cloud_module_event *evt = new_cloud_module_event();
+		evt->type = CLOUD_EVT_NEW_LOCK_TIMEOUT;
+		evt->data.timeout = lock_timeout_delta->valueint;
+		EVENT_SUBMIT(evt);
 		cJSON *skykey_response = cJSON_GetOrAddObjectItemCS(response_root, "skyKey");
+		// TODO: Await event confirming update.
 		cJSON_AddNumberToObjectCS(skykey_response, lock_timeout_prop_name, lock_timeout_delta->valueint);
 	}
 	return 0;
