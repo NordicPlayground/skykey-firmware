@@ -311,8 +311,10 @@ static void connect_aws(void)
 static void handle_password_download_failed(void)
 {
 	cJSON *root = cJSON_CreateObject();
-	cJSON *skykey_obj = cJSON_AddObjectToObjectCS(root, "skyKey");
-	cJSON *databaseLocation_obj = cJSON_AddStringToObjectCS(skykey_obj, "databaseLocation", "Download failed");
+	cJSON *state_obj = cJSON_AddObjectToObject(root, "state");
+	cJSON *reported_obj = cJSON_AddObjectToObject(state_obj, "reported");
+	cJSON *skykey_obj = cJSON_AddObjectToObjectCS(reported_obj, "skyKey");
+	cJSON *databaseLocation_obj = cJSON_AddStringToObjectCS(skykey_obj, "databaseDownloadStatus", "failed");
 	char *message = cJSON_PrintUnformatted(root);
 	struct aws_iot_data tx_data = {
 		.qos = MQTT_QOS_0_AT_MOST_ONCE,
@@ -320,6 +322,30 @@ static void handle_password_download_failed(void)
 		.ptr = message,
 		.len = strlen(message),
 	};
+	aws_iot_send(&tx_data);
+	cJSON_free(message);
+	cJSON_Delete(root);
+	pwd_download_state_set(DOWNLOAD_STATE_FREE);
+}
+
+/**
+ * @brief Informs the cloud that the password download is complete.
+ */
+static void handle_password_download_complete(void)
+{
+	cJSON *root = cJSON_CreateObject();
+	cJSON *state_obj = cJSON_AddObjectToObject(root, "state");
+	cJSON *reported_obj = cJSON_AddObjectToObject(state_obj, "reported");
+	cJSON *skykey_obj = cJSON_AddObjectToObjectCS(reported_obj, "skyKey");
+	cJSON *databaseLocation_obj = cJSON_AddStringToObjectCS(skykey_obj, "databaseDownloadStatus", "complete");
+	char *message = cJSON_PrintUnformatted(root);
+	struct aws_iot_data tx_data = {
+		.qos = MQTT_QOS_0_AT_MOST_ONCE,
+		.topic.type = AWS_IOT_SHADOW_TOPIC_UPDATE,
+		.ptr = message,
+		.len = strlen(message),
+	};
+	aws_iot_send(&tx_data);
 	cJSON_free(message);
 	cJSON_Delete(root);
 	pwd_download_state_set(DOWNLOAD_STATE_FREE);
@@ -360,7 +386,36 @@ static int handle_password_delta(cJSON *desired_delta, cJSON *response_root)
 
 		cJSON *skykey_response = cJSON_GetOrAddObjectItemCS(response_root, "skyKey");
 		cJSON_AddStringToObjectCS(skykey_response, "databaseLocation", password_delta->valuestring);
+		cJSON_AddStringToObjectCS(skykey_response, "databaseDownloadStatus", "started");
 	}
+	return 0;
+}
+
+static int handle_lock_timeout_delta(cJSON *desired_delta, cJSON *response_root)
+{
+	cJSON *skykey_delta = cJSON_GetObjectItemCaseSensitive(desired_delta, "skyKey");
+	char *lock_timeout_prop_name = "lockTimeoutSeconds";
+	if (skykey_delta == NULL || !cJSON_IsObject(skykey_delta))
+	{
+		return 0;
+	}
+	cJSON *lock_timeout_delta = cJSON_GetObjectItemCaseSensitive(skykey_delta, lock_timeout_prop_name);
+	if (lock_timeout_delta != NULL && lock_timeout_delta->type == cJSON_Number)
+	{
+		// TODO: Update lock timeout
+		cJSON *skykey_response = cJSON_GetOrAddObjectItemCS(response_root, "skyKey");
+		cJSON_AddNumberToObjectCS(skykey_response, lock_timeout_prop_name, lock_timeout_delta->valueint);
+	}
+	return 0;
+}
+
+static int add_device_status(cJSON *desired_delta, cJSON *response_root)
+{
+	ARG_UNUSED(desired_delta);
+	cJSON *device_obj = cJSON_GetOrAddObjectItemCS(response_root, "dev");
+	cJSON *dev_version_obj = cJSON_GetOrAddObjectItemCS(device_obj, "v");
+	cJSON_AddStringToObjectCS(dev_version_obj, "appV", CONFIG_SKYKEY_FW_VERSION);
+	cJSON_AddStringToObjectCS(dev_version_obj, "brdV", CONFIG_SKYKEY_BOARD_VERSION);
 	return 0;
 }
 
@@ -370,6 +425,8 @@ static int handle_password_delta(cJSON *desired_delta, cJSON *response_root)
  */
 static shadow_delta_handler_t shadow_delta_handlers[] = {
 	handle_password_delta,
+	handle_lock_timeout_delta,
+	add_device_status,
 };
 
 /**
@@ -408,8 +465,6 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 		LOG_WRN("Could not get timestamp.");
 	}
 
-	// TODO: Call delta handlers.
-
 	for (int i = 0; i < sizeof(shadow_delta_handlers) / sizeof(shadow_delta_handlers[0]); i++)
 	{
 		int ret = shadow_delta_handlers[i](delta, reported);
@@ -429,12 +484,12 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 		.ptr = message,
 		.len = strlen(message)};
 
-	// LOG_DBG("Updating shadow");
-	// int err = aws_iot_send(&tx_data);
+	LOG_DBG("Updating shadow");
+	int err = aws_iot_send(&tx_data);
 
 	cJSON_free(message);
 	cJSON_Delete(root);
-	int err = 0;
+	err = 0;
 	return err;
 }
 
@@ -552,7 +607,7 @@ static void on_password_download_state_downloading(struct cloud_msg_data *msg)
 	if (IS_EVENT(msg, download, DOWNLOAD_EVT_DOWNLOAD_FINISHED))
 	{
 		LOG_DBG("Password download complete.");
-		pwd_download_state_set(DOWNLOAD_STATE_FREE);
+		handle_password_download_complete();
 	}
 
 	if (IS_EVENT(msg, download, DOWNLOAD_EVT_ERROR) || IS_EVENT(msg, download, DOWNLOAD_EVT_STORAGE_ERROR))
