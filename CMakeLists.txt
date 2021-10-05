@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
 #
 
-cmake_minimum_required(VERSION 3.16.0)
+cmake_minimum_required(VERSION 3.20.0)
 
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE ZDebug)
@@ -41,7 +41,16 @@ project("Skykey-Firmware")
 # NORDIC SDK APP START
 target_sources(app PRIVATE src/main.c)
 # NORDIC SDK APP END
+# Include application events and configuration headers
+zephyr_library_include_directories(
+  src/events
+  src/util
+  )
 
+# Include configuration headers
+zephyr_include_directories(
+  configuration/${BOARD}
+  )
 # Include custom drivers
 add_subdirectory(drivers)
 
@@ -54,7 +63,3 @@ add_subdirectory(src/events)
 add_subdirectory(src/util)
 
 add_subdirectory_ifdef(CONFIG_DISPLAY_MODULE src/display)
-# Include configuration headers
-zephyr_include_directories(
-  configuration/${BOARD}
-  )
