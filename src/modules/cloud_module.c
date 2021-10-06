@@ -388,7 +388,8 @@ static int handle_lock_timeout_delta(cJSON *delta)
 		evt->type = CLOUD_EVT_NEW_LOCK_TIMEOUT;
 		evt->data.timeout = lock_timeout_delta->valueint;
 		EVENT_SUBMIT(evt);
-		// TODO: Get confirmation from the lock module.
+		// TODO: Get confirmation from the lock module. This should be done in a separate function.
+		// HACK: For now we just assume the lock module accepted the timeout.
 		lock_shadow_response();
 		cJSON *root = shadow_response_root;
 		cJSON *state_obj = cJSON_GetOrAddObjectItemCS(root, "state");
@@ -400,6 +401,13 @@ static int handle_lock_timeout_delta(cJSON *delta)
 	return 0;
 }
 
+/**
+ * @brief Adds some basic device information to the shadow response.
+ * Might do more things in the future.
+ * 
+ * @param delta UNUSED
+ * @return 0 on success, negative errno otherwise.
+ */
 static int add_device_status(cJSON *delta)
 {
 	ARG_UNUSED(delta);
@@ -440,6 +448,14 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 		// More recent shadow received. Do nothing.
 		return 0;
 	}
+	lock_shadow_response();
+	cJSON *root = shadow_response_root;
+	cJSON *state_obj = cJSON_GetOrAddObjectItemCS(root, "state");
+	cJSON *reported_obj = cJSON_GetOrAddObjectItemCS(state_obj, "reported");
+	cJSON *dev_obj = cJSON_GetOrAddObjectItemCS(reported_obj, "dev");
+	cJSON_AddNumberToObjectCS(dev_obj, "ts", timestamp);
+	release_shadow_response();
+
 	last_handled_shadow = timestamp;
 
 	for (int i = 0; i < sizeof(shadow_delta_handlers) / sizeof(shadow_delta_handlers[0]); i++)
