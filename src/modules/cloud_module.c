@@ -176,6 +176,7 @@ static char get_accepted_topic[GET_ACCEPTED_TOPIC_LEN + 1];
 
 static struct aws_iot_config config;
 
+#define STATUS_UPDATE_WAIT_TIME_S (5)
 // Pointer to currently active shadow response object. Should only be accessed after aquiring shadow_response_mutex.
 static cJSON *shadow_response_root;
 static K_MUTEX_DEFINE(shadow_response_mutex);
@@ -311,7 +312,7 @@ static void handle_password_download_failed(void)
 	cJSON *skykey_obj = cJSON_GetOrAddObjectItemCS(reported_obj, "skyKey");
 	cJSON_AddStringToObjectCS(skykey_obj, "databaseDownloadStatus", "failed");
 
-	k_work_reschedule(&submit_shadow_update_work, K_SECONDS(1));
+	k_work_reschedule(&submit_shadow_update_work, K_SECONDS(STATUS_UPDATE_WAIT_TIME_S ));
 	release_shadow_response();
 }
 
@@ -327,7 +328,7 @@ static void handle_password_download_complete(void)
 	cJSON *skykey_obj = cJSON_GetOrAddObjectItemCS(reported_obj, "skyKey");
 	cJSON_AddStringToObjectCS(skykey_obj, "databaseDownloadStatus", "complete");
 
-	k_work_reschedule(&submit_shadow_update_work, K_SECONDS(1));
+	k_work_reschedule(&submit_shadow_update_work, K_SECONDS(STATUS_UPDATE_WAIT_TIME_S ));
 	release_shadow_response();
 }
 
@@ -366,7 +367,7 @@ static int handle_password_delta(cJSON *delta)
 		cJSON *reported_obj = cJSON_GetOrAddObjectItemCS(state_obj, "reported");
 		cJSON *skykey_obj = cJSON_GetOrAddObjectItemCS(reported_obj, "skyKey");
 		cJSON_AddStringToObjectCS(skykey_obj, "databaseLocation", password_delta->valuestring);
-		k_work_reschedule(&submit_shadow_update_work, K_SECONDS(1));
+		k_work_reschedule(&submit_shadow_update_work, K_SECONDS(STATUS_UPDATE_WAIT_TIME_S ));
 		release_shadow_response();
 	}
 	return 0;
@@ -450,7 +451,7 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 			return ret;
 		}
 	}
-	k_work_reschedule(&submit_shadow_update_work, K_SECONDS(1));
+	k_work_reschedule(&submit_shadow_update_work, K_SECONDS(STATUS_UPDATE_WAIT_TIME_S ));
 	return 0;
 }
 
