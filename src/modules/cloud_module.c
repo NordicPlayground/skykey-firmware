@@ -176,8 +176,20 @@ static char get_accepted_topic[GET_ACCEPTED_TOPIC_LEN + 1];
 
 static struct aws_iot_config config;
 
-// Pointer to currently active shadow response object.
+// Pointer to currently active shadow response object. Should only be accessed after aquiring shadow_response_mutex.
 static cJSON *shadow_response_root;
+static K_MUTEX_DEFINE(shadow_response_mutex);
+
+static void lock_shadow_response(void)
+{
+	k_mutex_lock(&shadow_response_mutex, K_FOREVER);
+}
+
+static void release_shadow_response(void)
+{
+	k_mutex_unlock(&shadow_response_mutex);
+}
+	
 
 static int populate_app_endpoint_topics(void)
 {
@@ -267,6 +279,7 @@ static void connect_aws(void)
 
 static void submit_shadow_update_work_fn(struct k_work *work)
 {
+	lock_shadow_response();
 	ARG_UNUSED(work);
 	LOG_DBG("Submiting shadow updates");
 	char *message = cJSON_PrintUnformatted(shadow_response_root);
@@ -280,6 +293,7 @@ static void submit_shadow_update_work_fn(struct k_work *work)
 	cJSON_free(message);
 	cJSON_Delete(shadow_response_root);
 	shadow_response_root = cJSON_CreateObject();
+	release_shadow_response();
 }
 
 // Work item used to submit the accumulated shadow update.
@@ -290,6 +304,7 @@ static K_WORK_DELAYABLE_DEFINE(submit_shadow_update_work, submit_shadow_update_w
  */
 static void handle_password_download_failed(void)
 {
+	lock_shadow_response();
 	cJSON *root = shadow_response_root;
 	cJSON *state_obj = cJSON_GetOrAddObjectItemCS(root, "state");
 	cJSON *reported_obj = cJSON_GetOrAddObjectItemCS(state_obj, "reported");
@@ -297,6 +312,7 @@ static void handle_password_download_failed(void)
 	cJSON_AddStringToObjectCS(skykey_obj, "databaseDownloadStatus", "failed");
 
 	k_work_reschedule(&submit_shadow_update_work, K_SECONDS(1));
+	release_shadow_response();
 }
 
 /**
@@ -304,6 +320,7 @@ static void handle_password_download_failed(void)
  */
 static void handle_password_download_complete(void)
 {
+	lock_shadow_response();
 	cJSON *root = shadow_response_root;
 	cJSON *state_obj = cJSON_GetOrAddObjectItemCS(root, "state");
 	cJSON *reported_obj = cJSON_GetOrAddObjectItemCS(state_obj, "reported");
@@ -311,6 +328,7 @@ static void handle_password_download_complete(void)
 	cJSON_AddStringToObjectCS(skykey_obj, "databaseDownloadStatus", "complete");
 
 	k_work_reschedule(&submit_shadow_update_work, K_SECONDS(1));
+	release_shadow_response();
 }
 
 /**
@@ -342,12 +360,14 @@ static int handle_password_delta(cJSON *delta)
 		strncpy(evt->data.url, password_delta->valuestring, sizeof(evt->data.url));
 		evt->data.url[sizeof(evt->data.url) - 1] = '\0'; // Ensure null termination
 		EVENT_SUBMIT(evt);
+		lock_shadow_response();
 		cJSON *root = shadow_response_root;
 		cJSON *state_obj = cJSON_GetOrAddObjectItemCS(root, "state");
 		cJSON *reported_obj = cJSON_GetOrAddObjectItemCS(state_obj, "reported");
 		cJSON *skykey_obj = cJSON_GetOrAddObjectItemCS(reported_obj, "skyKey");
 		cJSON_AddStringToObjectCS(skykey_obj, "databaseLocation", password_delta->valuestring);
 		k_work_reschedule(&submit_shadow_update_work, K_SECONDS(1));
+		release_shadow_response();
 	}
 	return 0;
 }
@@ -368,11 +388,13 @@ static int handle_lock_timeout_delta(cJSON *delta)
 		evt->data.timeout = lock_timeout_delta->valueint;
 		EVENT_SUBMIT(evt);
 		// TODO: Get confirmation from the lock module.
+		lock_shadow_response();
 		cJSON *root = shadow_response_root;
 		cJSON *state_obj = cJSON_GetOrAddObjectItemCS(root, "state");
 		cJSON *reported_obj = cJSON_GetOrAddObjectItemCS(state_obj, "reported");
 		cJSON *skykey_obj = cJSON_GetOrAddObjectItemCS(reported_obj, "skyKey");
 		cJSON_AddNumberToObjectCS(skykey_obj, lock_timeout_prop_name, lock_timeout_delta->valueint);
+		release_shadow_response();
 	}
 	return 0;
 }
@@ -380,6 +402,7 @@ static int handle_lock_timeout_delta(cJSON *delta)
 static int add_device_status(cJSON *delta)
 {
 	ARG_UNUSED(delta);
+	lock_shadow_response();
 	cJSON *root = shadow_response_root;
 	cJSON *state_obj = cJSON_GetOrAddObjectItemCS(root, "state");
 	cJSON *reported_obj = cJSON_GetOrAddObjectItemCS(state_obj, "reported");
@@ -387,6 +410,7 @@ static int add_device_status(cJSON *delta)
 	cJSON *version_obj = cJSON_GetOrAddObjectItemCS(dev_obj, "v");
 	cJSON_AddStringToObjectCS(version_obj, "appV", CONFIG_SKYKEY_FW_VERSION);
 	cJSON_AddStringToObjectCS(version_obj, "brdV", CONFIG_SKYKEY_BOARD_VERSION);
+	release_shadow_response();
 	return 0;
 }
 
@@ -700,12 +724,13 @@ static int cloud_configure(void)
 		LOG_ERR("populate_app_endpoint_topics, error: %d", err);
 		return err;
 	}
-
+	lock_shadow_response();
 	shadow_response_root = cJSON_CreateObject();
 	if (shadow_response_root == NULL)
 	{
 		return -ENOMEM;
 	}
+	release_shadow_response();
 	k_work_init_delayable(&connect_check_work, connect_check_work_fn);
 	return 0;
 }
