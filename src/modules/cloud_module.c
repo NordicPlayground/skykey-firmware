@@ -21,6 +21,7 @@
 #include "events/cloud_module_event.h"
 #include "events/download_module_event.h"
 #include "events/modem_module_event.h"
+#include "util/cjson_util.h"
 
 #define MODULE cloud_module
 
@@ -40,17 +41,15 @@ struct cloud_msg_data
 };
 
 /* Cloud module super states. */
-static enum state_type { 
-	STATE_LTE_DISCONNECTED,
-	STATE_LTE_CONNECTED,
-	STATE_SHUTDOWN,
+static enum state_type { STATE_LTE_DISCONNECTED,
+						 STATE_LTE_CONNECTED,
+						 STATE_SHUTDOWN,
 } state;
 
 /* Cloud module sub states. */
-static enum sub_state_type { 
-	SUB_STATE_CLOUD_DISCONNECTED,
-	SUB_STATE_CLOUD_CONNECTED,
-} sub_state;
+static enum cloud_state_type { CLOUD_STATE_CLOUD_DISCONNECTED,
+							   CLOUD_STATE_CLOUD_CONNECTED,
+} cloud_state;
 
 /**
  * @brief Work item used to check if a cloud connection is established.
@@ -64,10 +63,7 @@ struct cloud_backoff_delay_lookup
 
 /* Lookup table for backoff reconnection to cloud. Binary scaling. */
 static struct cloud_backoff_delay_lookup backoff_delay[] = {
-	{32}, {64}, {128}, {256}, {512}, {2048},
-	{4096}, {8192}, {16384}, {32768}, {65536},
-	 {131072}, {262144}, {524288}, {1048576}
-};
+	{32}, {64}, {128}, {256}, {512}, {2048}, {4096}, {8192}, {16384}, {32768}, {65536}, {131072}, {262144}, {524288}, {1048576}};
 
 /* Variable that keeps track of how many times a reconnection to cloud
  * has been tried without success.
@@ -107,14 +103,14 @@ static char *state2str(enum state_type state)
 	}
 }
 
-static char *sub_state2str(enum sub_state_type new_state)
+static char *cloud_state2str(enum cloud_state_type new_state)
 {
 	switch (new_state)
 	{
-	case SUB_STATE_CLOUD_DISCONNECTED:
-		return "SUB_STATE_CLOUD_DISCONNECTED";
-	case SUB_STATE_CLOUD_CONNECTED:
-		return "SUB_STATE_CLOUD_CONNECTED";
+	case CLOUD_STATE_CLOUD_DISCONNECTED:
+		return "CLOUD_STATE_CLOUD_DISCONNECTED";
+	case CLOUD_STATE_CLOUD_CONNECTED:
+		return "CLOUD_STATE_CLOUD_CONNECTED";
 	default:
 		return "Unknown";
 	}
@@ -135,19 +131,19 @@ static void state_set(enum state_type new_state)
 	state = new_state;
 }
 
-static void sub_state_set(enum sub_state_type new_state)
+static void cloud_state_set(enum cloud_state_type new_state)
 {
-	if (new_state == sub_state)
+	if (new_state == cloud_state)
 	{
-		LOG_DBG("Sub state: %s", sub_state2str(sub_state));
+		LOG_DBG("Cloud state: %s", cloud_state2str(cloud_state));
 		return;
 	}
 
-	LOG_DBG("Sub state transition %s --> %s",
-			sub_state2str(sub_state),
-			sub_state2str(new_state));
+	LOG_DBG("Cloud state transition %s --> %s",
+			cloud_state2str(cloud_state),
+			cloud_state2str(new_state));
 
-	sub_state = new_state;
+	cloud_state = new_state;
 }
 
 //========================================================================================
@@ -180,38 +176,54 @@ static char get_accepted_topic[GET_ACCEPTED_TOPIC_LEN + 1];
 
 static struct aws_iot_config config;
 
+#define STATUS_UPDATE_WAIT_TIME_S (5)
+// Pointer to currently active shadow response object. Should only be accessed after aquiring shadow_response_mutex.
+static cJSON *shadow_response_root;
+static K_MUTEX_DEFINE(shadow_response_mutex);
+
+static void lock_shadow_response(void)
+{
+	k_mutex_lock(&shadow_response_mutex, K_FOREVER);
+}
+
+static void release_shadow_response(void)
+{
+	k_mutex_unlock(&shadow_response_mutex);
+}
+	
+
 static int populate_app_endpoint_topics(void)
 {
 	int err;
 
-// 	err = snprintf(batch_topic, sizeof(batch_topic), BATCH_TOPIC,
-// 				   client_id_buf);
-// 	if (err != BATCH_TOPIC_LEN)
-// 	{
-// 		return -ENOMEM;
-// 	}
+	// 	err = snprintf(batch_topic, sizeof(batch_topic), BATCH_TOPIC,
+	// 				   client_id_buf);
+	// 	if (err != BATCH_TOPIC_LEN)
+	// 	{
+	// 		return -ENOMEM;
+	// 	}
 
-// 	pub_topics[0].str = batch_topic;
-// 	pub_topics[0].len = BATCH_TOPIC_LEN;
+	// 	pub_topics[0].str = batch_topic;
+	// 	pub_topics[0].len = BATCH_TOPIC_LEN;
 
-// 	err = snprintf(messages_topic, sizeof(messages_topic), MESSAGES_TOPIC,
-// 				   client_id_buf);
-// 	if (err != MESSAGES_TOPIC_LEN)
-// 	{
-// 		return -ENOMEM;
-// 	}
+	// 	err = snprintf(messages_topic, sizeof(messages_topic), MESSAGES_TOPIC,
+	// 				   client_id_buf);
+	// 	if (err != MESSAGES_TOPIC_LEN)
+	// 	{
+	// 		return -ENOMEM;
+	// 	}
 
-// 	pub_topics[1].str = messages_topic;
-// 	pub_topics[1].len = MESSAGES_TOPIC_LEN;
+	// 	pub_topics[1].str = messages_topic;
+	// 	pub_topics[1].len = MESSAGES_TOPIC_LEN;
 
-// 	err = snprintf(cfg_topic, sizeof(cfg_topic), CFG_TOPIC, client_id_buf);
-// 	if (err != CFG_TOPIC_LEN)
-// 	{
-// 		return -ENOMEM;
-// 	}
+	// 	err = snprintf(cfg_topic, sizeof(cfg_topic), CFG_TOPIC, client_id_buf);
+	// 	if (err != CFG_TOPIC_LEN)
+	// 	{
+	// 		return -ENOMEM;
+	// 	}
 
-// 	sub_topics[0].str = cfg_topic;
-// 	sub_topics[0].len = CFG_TOPIC_LEN;
+	// 	sub_topics[0].str = cfg_topic;
+	// 	sub_topics[0].len = CFG_TOPIC_LEN;
 
 	// err = snprintf(update_delta_topic, sizeof(update_delta_topic), UPDATE_DELTA_TOPIC,
 	// 			   client_id_buf);
@@ -220,7 +232,6 @@ static int populate_app_endpoint_topics(void)
 	// 	return -ENOMEM;
 	// }
 
-
 	// err = snprintf(get_accepted_topic, sizeof(get_accepted_topic), GET_ACCEPTED_TOPIC,
 	// 			   client_id_buf);
 	// if (err != GET_ACCEPTED_TOPIC_LEN)
@@ -228,14 +239,13 @@ static int populate_app_endpoint_topics(void)
 	// 	return -ENOMEM;
 	// }
 
-
-// 	err = aws_iot_subscription_topics_add(sub_topics,
-// 										  ARRAY_SIZE(sub_topics));
-// 	if (err)
-// 	{
-// 		LOG_ERR("cloud_ep_subscriptions_add, error: %d", err);
-// 		return err;
-// 	}
+	// 	err = aws_iot_subscription_topics_add(sub_topics,
+	// 										  ARRAY_SIZE(sub_topics));
+	// 	if (err)
+	// 	{
+	// 		LOG_ERR("cloud_ep_subscriptions_add, error: %d", err);
+	// 		return err;
+	// 	}
 
 	return 0;
 }
@@ -268,15 +278,152 @@ static void connect_aws(void)
 	k_work_reschedule(&connect_check_work, K_SECONDS(backoff_sec));
 }
 
+static void submit_shadow_update_work_fn(struct k_work *work)
+{
+	lock_shadow_response();
+	ARG_UNUSED(work);
+	LOG_DBG("Submiting shadow updates");
+	char *message = cJSON_PrintUnformatted(shadow_response_root);
+	struct aws_iot_data tx_data = {
+		.qos = MQTT_QOS_0_AT_MOST_ONCE,
+		.topic.type = AWS_IOT_SHADOW_TOPIC_UPDATE,
+		.ptr = message,
+		.len = strlen(message),
+	};
+	aws_iot_send(&tx_data);
+	cJSON_free(message);
+	cJSON_Delete(shadow_response_root);
+	shadow_response_root = cJSON_CreateObject();
+	release_shadow_response();
+}
+
+// Work item used to submit the accumulated shadow update.
+static K_WORK_DELAYABLE_DEFINE(submit_shadow_update_work, submit_shadow_update_work_fn);
+
 /**
- * @brief Convenience macro for deleting root and returning an error on NULL.
+ * @brief Informs the cloud that the password download failed.
  */
-#define NOT_NULL(expression, root, error) \
-	if (expression == NULL)               \
-	{                                     \
-		cJSON_Delete(root);               \
-		return -ENOMEM;                   \
+static void handle_password_download_failed(void)
+{
+	lock_shadow_response();
+	cJSON *root = shadow_response_root;
+	cJSON *state_obj = cJSON_GetOrAddObjectItemCS(root, "state");
+	cJSON *reported_obj = cJSON_GetOrAddObjectItemCS(state_obj, "reported");
+	cJSON *skykey_obj = cJSON_GetOrAddObjectItemCS(reported_obj, "skyKey");
+	cJSON_AddStringToObjectCS(skykey_obj, "databaseDownloadStatus", "failed");
+
+	k_work_reschedule(&submit_shadow_update_work, K_SECONDS(STATUS_UPDATE_WAIT_TIME_S ));
+	release_shadow_response();
+}
+
+/**
+ * @brief Informs the cloud that the password download is complete.
+ */
+static void handle_password_download_complete(void)
+{
+	lock_shadow_response();
+	cJSON *root = shadow_response_root;
+	cJSON *state_obj = cJSON_GetOrAddObjectItemCS(root, "state");
+	cJSON *reported_obj = cJSON_GetOrAddObjectItemCS(state_obj, "reported");
+	cJSON *skykey_obj = cJSON_GetOrAddObjectItemCS(reported_obj, "skyKey");
+	cJSON_AddStringToObjectCS(skykey_obj, "databaseDownloadStatus", "complete");
+
+	k_work_reschedule(&submit_shadow_update_work, K_SECONDS(STATUS_UPDATE_WAIT_TIME_S ));
+	release_shadow_response();
+}
+
+/**
+ * @brief Type for functions that handle a shadow delta and initializes a response modification.
+ * 
+ * @param delta Shadow delta root. Should not be modified.
+ * @return 0 on success, negative errno otherwise. Non-essential handlers should always return 0.
+ */
+typedef int (*shadow_delta_handler_t)(cJSON *delta);
+
+/**
+ * @brief Handles password database related deltas.	
+ * 
+ * @param delta Shadow delta root. Should not be modified.
+ * @return 0 on success, negative errno otherwise.
+ */
+static int handle_password_delta(cJSON *delta)
+{
+	cJSON *skykey_delta = cJSON_GetObjectItemCaseSensitive(delta, "skyKey");
+	if (skykey_delta == NULL || !cJSON_IsObject(skykey_delta))
+	{
+		return 0;
 	}
+	cJSON *password_delta = cJSON_GetObjectItemCaseSensitive(skykey_delta, "databaseLocation");
+	if (password_delta != NULL && password_delta->type == cJSON_String)
+	{
+		struct cloud_module_event *evt = new_cloud_module_event();
+		evt->type = CLOUD_EVT_DATABASE_UPDATE_AVAILABLE;
+		strncpy(evt->data.url, password_delta->valuestring, sizeof(evt->data.url));
+		evt->data.url[sizeof(evt->data.url) - 1] = '\0'; // Ensure null termination
+		EVENT_SUBMIT(evt);
+		lock_shadow_response();
+		cJSON *root = shadow_response_root;
+		cJSON *state_obj = cJSON_GetOrAddObjectItemCS(root, "state");
+		cJSON *reported_obj = cJSON_GetOrAddObjectItemCS(state_obj, "reported");
+		cJSON *skykey_obj = cJSON_GetOrAddObjectItemCS(reported_obj, "skyKey");
+		cJSON_AddStringToObjectCS(skykey_obj, "databaseLocation", password_delta->valuestring);
+		k_work_reschedule(&submit_shadow_update_work, K_SECONDS(STATUS_UPDATE_WAIT_TIME_S ));
+		release_shadow_response();
+	}
+	return 0;
+}
+
+static int handle_lock_timeout_delta(cJSON *delta)
+{
+	cJSON *skykey_delta = cJSON_GetObjectItemCaseSensitive(delta, "skyKey");
+	char *lock_timeout_prop_name = "lockTimeoutSeconds";
+	if (skykey_delta == NULL || !cJSON_IsObject(skykey_delta))
+	{
+		return 0;
+	}
+	cJSON *lock_timeout_delta = cJSON_GetObjectItemCaseSensitive(skykey_delta, lock_timeout_prop_name);
+	if (lock_timeout_delta != NULL && lock_timeout_delta->type == cJSON_Number)
+	{
+		struct cloud_module_event *evt = new_cloud_module_event();
+		evt->type = CLOUD_EVT_NEW_LOCK_TIMEOUT;
+		evt->data.timeout = lock_timeout_delta->valueint;
+		EVENT_SUBMIT(evt);
+		// TODO: Get confirmation from the lock module.
+		lock_shadow_response();
+		cJSON *root = shadow_response_root;
+		cJSON *state_obj = cJSON_GetOrAddObjectItemCS(root, "state");
+		cJSON *reported_obj = cJSON_GetOrAddObjectItemCS(state_obj, "reported");
+		cJSON *skykey_obj = cJSON_GetOrAddObjectItemCS(reported_obj, "skyKey");
+		cJSON_AddNumberToObjectCS(skykey_obj, lock_timeout_prop_name, lock_timeout_delta->valueint);
+		release_shadow_response();
+	}
+	return 0;
+}
+
+static int add_device_status(cJSON *delta)
+{
+	ARG_UNUSED(delta);
+	lock_shadow_response();
+	cJSON *root = shadow_response_root;
+	cJSON *state_obj = cJSON_GetOrAddObjectItemCS(root, "state");
+	cJSON *reported_obj = cJSON_GetOrAddObjectItemCS(state_obj, "reported");
+	cJSON *dev_obj = cJSON_GetOrAddObjectItemCS(reported_obj, "dev");
+	cJSON *version_obj = cJSON_GetOrAddObjectItemCS(dev_obj, "v");
+	cJSON_AddStringToObjectCS(version_obj, "appV", CONFIG_SKYKEY_FW_VERSION);
+	cJSON_AddStringToObjectCS(version_obj, "brdV", CONFIG_SKYKEY_BOARD_VERSION);
+	release_shadow_response();
+	return 0;
+}
+
+/**
+ * @brief Delta handler pipeline. Functions here will get called in order with the delta and response as arguments.
+ * Functions should return 0 on success, negative errno otherwise.
+ */
+static shadow_delta_handler_t shadow_delta_handlers[] = {
+	handle_password_delta,
+	handle_lock_timeout_delta,
+	add_device_status,
+};
 
 /**
  * @brief Updates AWS device shadow.
@@ -295,83 +442,22 @@ static int update_shadow(cJSON *delta, int64_t timestamp)
 	}
 	last_handled_shadow = timestamp;
 
-	cJSON *root = cJSON_CreateObject();
-	NOT_NULL(root, root, -ENOMEM);
-	cJSON *state = cJSON_AddObjectToObject(root, "state");
-	NOT_NULL(state, root, -ENOMEM);
-	cJSON *reported = cJSON_AddObjectToObject(state, "reported");
-	NOT_NULL(reported, root, -ENOMEM);
-
-	int64_t msg_ts = 0; // Timestamp for shadow update.
-	int16_t batv = 0;	// Battery voltage
-
-	if (!date_time_now(&msg_ts))
+	for (int i = 0; i < sizeof(shadow_delta_handlers) / sizeof(shadow_delta_handlers[0]); i++)
 	{
-		NOT_NULL(cJSON_AddNumberToObject(reported, "ts", msg_ts), root, -ENOMEM);
-	}
-	else
-		LOG_WRN("Could not get timestamp.");
-
-	if (modem_info_short_get(MODEM_INFO_BATTERY, &batv) == sizeof(batv))
-	{
-		NOT_NULL(cJSON_AddNumberToObject(reported, "batv", batv), root, -ENOMEM);
-	}
-	else
-		LOG_WRN("Could not get battery voltage.");
-
-	// Dummy value for testing/POC.
-	cJSON *val_obj = cJSON_GetObjectItemCaseSensitive(delta, "value");
-	if (val_obj != NULL)
-	{
-		NOT_NULL(cJSON_AddNumberToObject(reported, "value", val_obj->valueint), root, -ENOMEM);
-	}
-
-	// TODO: Consider using AWS IoT Jobs instead of device shadow for updating database.
-	//This is a temporary solution for testing the downloading mechanism.
-	cJSON *delta_obj = cJSON_GetObjectItemCaseSensitive(delta, "desired");
-	cJSON *pwd_obj = cJSON_GetObjectItemCaseSensitive(delta_obj, "pwd");
-	if (pwd_obj != NULL)
-	{
-		cJSON *pwd_url_obj = cJSON_GetObjectItemCaseSensitive(pwd_obj, "url");
-		cJSON *pwd_ver_obj = cJSON_GetObjectItemCaseSensitive(pwd_obj, "v");
-		if (pwd_url_obj != NULL && pwd_ver_obj != NULL)
+		int ret = shadow_delta_handlers[i](delta);
+		if (ret < 0)
 		{
-			char *url = pwd_url_obj->valuestring;
-			struct cloud_module_event *event = new_cloud_module_event();
-			event->type = CLOUD_EVT_DATABASE_UPDATE_AVAILABLE;
-			if (strlen(url) > CONFIG_CLOUD_DOWNLOAD_URL_MAX_LEN) {
-				LOG_ERR("URL length (%d) exceeded the configurated maximum length (%d).",
-					strlen(url), CONFIG_CLOUD_DOWNLOAD_URL_MAX_LEN);
-			} else {
-				strcpy(event->data.url, url);
-				EVENT_SUBMIT(event);
-			}
+			LOG_WRN("Delta handler with index %d returned %d", i, ret);
+			return ret;
 		}
-		cJSON_AddItemReferenceToObject(reported, "pwd", pwd_obj); // HACK: Echo password settings to remove it from delta. Again, this is not a good solution.
 	}
-
-	char *message = cJSON_Print(root);
-	NOT_NULL(message, root, -ENOMEM);
-
-	struct aws_iot_data tx_data = {
-		.qos = MQTT_QOS_0_AT_MOST_ONCE,
-		.topic.type = AWS_IOT_SHADOW_TOPIC_UPDATE,
-		.ptr = message,
-		.len = strlen(message)};
-
-	// LOG_DBG("Updating shadow");
-	// int err = aws_iot_send(&tx_data);
-
-	cJSON_free(message);
-	cJSON_Delete(root);
-	int err = 0;
-	return err;
+	k_work_reschedule(&submit_shadow_update_work, K_SECONDS(STATUS_UPDATE_WAIT_TIME_S ));
+	return 0;
 }
-#undef NOT_NULL
 
 static void handle_cloud_data(const struct aws_iot_data *msg)
 {
-	if (!strcmp(msg->topic.str, get_accepted_topic))
+	if (!strcmp(msg->topic.str, get_accepted_topic) || !strcmp(msg->topic.str, update_delta_topic))
 	{
 		cJSON *json = cJSON_Parse(msg->ptr);
 		cJSON *state = cJSON_GetObjectItemCaseSensitive(json, "state");
@@ -390,7 +476,7 @@ static void handle_cloud_data(const struct aws_iot_data *msg)
 static void connect_check_work_fn(struct k_work *work)
 {
 	// If cancelling works fails
-	if ((state == STATE_LTE_CONNECTED && sub_state == SUB_STATE_CLOUD_CONNECTED) ||
+	if ((state == STATE_LTE_CONNECTED && cloud_state == CLOUD_STATE_CLOUD_CONNECTED) ||
 		(state == STATE_LTE_DISCONNECTED))
 	{
 		return;
@@ -414,7 +500,7 @@ static void on_state_lte_connected(struct cloud_msg_data *msg)
 	if (IS_EVENT(msg, modem, MODEM_EVT_LTE_DISCONNECTED))
 	{
 		state_set(STATE_LTE_DISCONNECTED);
-		sub_state_set(SUB_STATE_CLOUD_DISCONNECTED);
+		cloud_state_set(CLOUD_STATE_CLOUD_DISCONNECTED);
 
 		aws_iot_disconnect();
 
@@ -440,25 +526,35 @@ static void on_state_lte_disconnected(struct cloud_msg_data *msg)
 	}
 }
 
-/* Message handler for SUB_STATE_CLOUD_CONNECTED. */
-static void on_sub_state_cloud_connected(struct cloud_msg_data *msg)
+/* Message handler for CLOUD_STATE_CLOUD_CONNECTED. */
+static void on_cloud_state_cloud_connected(struct cloud_msg_data *msg)
 {
 	if (IS_EVENT(msg, cloud, CLOUD_EVT_DISCONNECTED))
 	{
-		sub_state_set(SUB_STATE_CLOUD_DISCONNECTED);
+		cloud_state_set(CLOUD_STATE_CLOUD_DISCONNECTED);
 
 		k_work_reschedule(&connect_check_work, K_NO_WAIT);
 
 		return;
 	}
+
+	if (IS_EVENT(msg, download, DOWNLOAD_EVT_ERROR))
+	{
+		handle_password_download_failed();
+	}
+
+	if (IS_EVENT(msg, download, DOWNLOAD_EVT_DOWNLOAD_FINISHED))
+	{
+		handle_password_download_complete();
+	}
 }
 
-/* Message handler for SUB_STATE_CLOUD_DISCONNECTED. */
-static void on_sub_state_cloud_disconnected(struct cloud_msg_data *msg)
+/* Message handler for CLOUD_STATE_CLOUD_DISCONNECTED. */
+static void on_cloud_state_cloud_disconnected(struct cloud_msg_data *msg)
 {
 	if (IS_EVENT(msg, cloud, CLOUD_EVT_CONNECTED))
 	{
-		sub_state_set(SUB_STATE_CLOUD_CONNECTED);
+		cloud_state_set(CLOUD_STATE_CLOUD_CONNECTED);
 
 		connect_retries = 0;
 		k_work_cancel_delayable(&connect_check_work);
@@ -508,7 +604,8 @@ static bool event_handler(const struct event_header *eh)
 		enqueue_msg = true;
 	}
 
-	if (is_modem_module_event(eh)) {
+	if (is_modem_module_event(eh))
+	{
 		struct modem_module_event *evt = cast_modem_module_event(eh);
 		msg.module.modem = *evt;
 		enqueue_msg = true;
@@ -546,13 +643,13 @@ static void aws_iot_evt_handler(const struct aws_iot_evt *evt)
 	case AWS_IOT_EVT_CONNECTED:
 	{
 		LOG_DBG("Connected to AWS");
-		sub_state_set(SUB_STATE_CLOUD_CONNECTED);
+		cloud_state_set(CLOUD_STATE_CLOUD_CONNECTED);
 		break;
 	}
 	case AWS_IOT_EVT_DISCONNECTED:
 	{
 		LOG_DBG("Disconnected from AWS");
-		sub_state_set(SUB_STATE_CLOUD_DISCONNECTED);
+		cloud_state_set(CLOUD_STATE_CLOUD_DISCONNECTED);
 		break;
 	}
 	case AWS_IOT_EVT_READY:
@@ -587,7 +684,7 @@ static void aws_iot_evt_handler(const struct aws_iot_evt *evt)
  */
 static int cloud_configure(void)
 {
-	sub_state_set(SUB_STATE_CLOUD_DISCONNECTED);
+	cloud_state_set(CLOUD_STATE_CLOUD_DISCONNECTED);
 	int err;
 
 #if !defined(CONFIG_CLOUD_CLIENT_ID_USE_CUSTOM)
@@ -595,7 +692,8 @@ static int cloud_configure(void)
 
 	/* Retrieve device IMEI from modem. */
 	err = at_cmd_write("AT+CGSN", imei_buf, sizeof(imei_buf), NULL);
-	if (err) {
+	if (err)
+	{
 		LOG_ERR("Not able to retrieve device IMEI from modem");
 		return err;
 	}
@@ -607,7 +705,7 @@ static int cloud_configure(void)
 
 #else
 	snprintf(client_id_buf, sizeof(client_id_buf), "%s",
-		 CONFIG_CLOUD_CLIENT_ID);
+			 CONFIG_CLOUD_CLIENT_ID);
 #endif
 	/* Fetch IMEI from modem data and set IMEI as cloud connection ID **/
 	config.client_id = client_id_buf;
@@ -627,7 +725,13 @@ static int cloud_configure(void)
 		LOG_ERR("populate_app_endpoint_topics, error: %d", err);
 		return err;
 	}
-
+	lock_shadow_response();
+	shadow_response_root = cJSON_CreateObject();
+	if (shadow_response_root == NULL)
+	{
+		return -ENOMEM;
+	}
+	release_shadow_response();
 	k_work_init_delayable(&connect_check_work, connect_check_work_fn);
 	return 0;
 }
@@ -660,7 +764,6 @@ static int setup(void)
 	{
 		return -ENOMEM;
 	}
-
 	return 0;
 }
 
@@ -697,13 +800,13 @@ static void module_thread_fn(void)
 		switch (state)
 		{
 		case STATE_LTE_CONNECTED:
-			switch (sub_state)
+			switch (cloud_state)
 			{
-			case SUB_STATE_CLOUD_CONNECTED:
-				on_sub_state_cloud_connected(&msg);
+			case CLOUD_STATE_CLOUD_CONNECTED:
+				on_cloud_state_cloud_connected(&msg);
 				break;
-			case SUB_STATE_CLOUD_DISCONNECTED:
-				on_sub_state_cloud_disconnected(&msg);
+			case CLOUD_STATE_CLOUD_DISCONNECTED:
+				on_cloud_state_cloud_disconnected(&msg);
 				break;
 			default:
 				LOG_ERR("Unknown Cloud module sub state");

@@ -57,7 +57,7 @@ static struct module_data self = {
 
 static struct download_client dl_client;
 static struct download_client_cfg dl_client_cfg = {
-	.sec_tag = -1,
+	.sec_tag = CONFIG_DOWNLOAD_MODULE_SEC_TAG,
 	.apn = NULL,
 	.pdn_id = 0,
 	.frag_size_override = 0,
@@ -177,8 +177,8 @@ static int download_client_callback(const struct download_client_evt *event)
 				SEND_ERROR(download, DOWNLOAD_EVT_STORAGE_ERROR, err);
 				download_client_disconnect(&dl_client);
 				file_close_and_unmount();
-				state_set(STATE_FREE);
 				LOG_ERR("Could not store file. Cancelling download.");
+				state_set(STATE_FREE);
 				return err;
 			}
 			LOG_DBG("Fragment received. Size: %d", event->fragment.len);
@@ -190,6 +190,7 @@ static int download_client_callback(const struct download_client_evt *event)
 			if (file_size > CONFIG_DOWNLOAD_FILE_MAX_SIZE_BYTES) {
 				LOG_ERR("File size (%dB) too big", file_size);
 				SEND_ERROR(download, DOWNLOAD_EVT_ERROR, -EFBIG);
+				state_set(STATE_FREE);
 				return -EFBIG;
 			}
 			first_fragment = false;
@@ -224,6 +225,7 @@ static int download_client_callback(const struct download_client_evt *event)
 			int err = event->error; /* Glue for logging */
 			LOG_ERR("An error occured while downloading: %d", err);
 			SEND_ERROR(download, DOWNLOAD_EVT_ERROR, err);
+			state_set(STATE_FREE);
 			return err;
 		}
 		break;

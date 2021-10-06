@@ -11,6 +11,7 @@
 
 #include <modem/lte_lc.h>
 #include <modem/modem_info.h>
+#include <modem/modem_key_mgmt.h>
 
 #define MODULE modem_module
 
@@ -23,6 +24,13 @@ LOG_MODULE_REGISTER(MODULE, CONFIG_MODEM_MODULE_LOG_LEVEL);
 
 BUILD_ASSERT(!IS_ENABLED(CONFIG_LTE_AUTO_INIT_AND_CONNECT),
              "The Modem module does not support this configuration");
+
+// Certificate for file download CA
+static const char dl_ca_cert[] = {
+#include CONFIG_MODEM_MODULE_DOWNLOAD_CA_CERT_FILE
+};
+BUILD_ASSERT(sizeof(dl_ca_cert) < KB(4), "Download CA certificate too large");
+#define DL_CA_SEC_TAG CONFIG_MODEM_MODULE_DOWNLOAD_CA_SEC_TAG
 
 struct modem_msg_data
 {
@@ -216,6 +224,44 @@ static void modem_rsrp_handler(char rsrp_value)
 }
 
 /* Static module functions. */
+
+static int provision_certs(void)
+{
+    int err;
+    bool exists;
+    uint8_t unused;
+
+    err = modem_key_mgmt_exists(DL_CA_SEC_TAG,
+                                MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN,
+                                &exists, &unused);
+    if (err)
+    {
+        LOG_ERR("Failed to check for certificates at sec tag %d. Err: %d", DL_CA_SEC_TAG, err);
+        return err;
+    }
+
+    if (exists)
+    {
+        err = modem_key_mgmt_cmp(DL_CA_SEC_TAG, MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN,
+                                 dl_ca_cert, sizeof(dl_ca_cert) - 1);
+        LOG_DBG("Certificate %d %s", DL_CA_SEC_TAG, err ? "does not match" : "matches");
+        if (!err)
+        {
+            return 0;
+        }
+    }
+
+    LOG_DBG("Provisioning certificate");
+    err = modem_key_mgmt_write(DL_CA_SEC_TAG,
+                               MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN,
+                               dl_ca_cert, sizeof(dl_ca_cert) - 1);
+    if (err)
+    {
+        LOG_ERR("Failed to provision certificate. Err: %d", err);
+    }
+    return 0;
+}
+
 static void send_cell_update(uint32_t cell_id, uint32_t tac)
 {
     struct modem_module_event *evt = new_modem_module_event();
@@ -313,6 +359,12 @@ static int modem_data_init(void)
 static int setup(void)
 {
     int err;
+    err = provision_certs();
+    if (err)
+    {
+        LOG_ERR("provision_certs, error: %d", err);
+        return err;
+    }
 
     err = lte_lc_init();
     if (err)
