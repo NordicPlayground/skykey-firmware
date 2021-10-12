@@ -45,7 +45,7 @@ int mount_fs(void) {
     }
     unsigned int id = (uintptr_t)mp->storage_dev;
 
-    snprintf(filename, sizeof(filename), "%s/my_passwords", mp->mnt_point);
+    snprintf(filename, sizeof(filename), "%s/my_passwordsss", mp->mnt_point);
 
     rc = fs_mount(mp);
     if (rc < 0)
@@ -115,12 +115,14 @@ int file_extract_content(void *read_buf, size_t read_buf_size) {
     if (rc < 0)
     {
         LOG_ERR("Failed in opening file: %d", rc);
+        file_close_and_unmount();
         return rc;
     }
 
     rc = fs_read(&file, read_buf, read_buf_size);
     if (rc < 0) {
         LOG_ERR("Failed in reading file: %d", rc);
+        file_close_and_unmount();
         return rc;
     }
     rc = file_close_and_unmount();
