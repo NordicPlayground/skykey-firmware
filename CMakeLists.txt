@@ -41,6 +41,7 @@ project("Skykey-Firmware")
 # NORDIC SDK APP START
 target_sources(app PRIVATE src/main.c)
 # NORDIC SDK APP END
+
 # Include application events and configuration headers
 zephyr_library_include_directories(
   src/events

@@ -21,8 +21,12 @@
 #include "events/cloud_module_event.h"
 #include "events/download_module_event.h"
 #include "events/modem_module_event.h"
+#include <caf/events/power_event.h>
+#include <caf/events/power_manager_event.h>
+
 
 #define MODULE cloud_module
+#include <caf/events/module_state_event.h>
 
 #include "modules_common.h"
 
@@ -514,6 +518,13 @@ static bool event_handler(const struct event_header *eh)
 		enqueue_msg = true;
 	}
 
+	if (is_power_down_event(eh)) {
+
+		lte_lc_power_off();
+		state_set(STATE_SHUTDOWN);
+	}
+
+
 	if (enqueue_msg)
 	{
 		int err = module_enqueue_msg(&self, &msg);
@@ -646,6 +657,9 @@ static int setup(void)
 		LOG_ERR("cloud_configure, error: %d", err);
 		return err;
 	}
+
+	//For testing purposes:
+	power_manager_restrict(MODULE_IDX(MODULE), POWER_MANAGER_LEVEL_SUSPENDED);
 
 	err = snprintf(update_delta_topic, sizeof(update_delta_topic), UPDATE_DELTA_TOPIC,
 				   client_id_buf);

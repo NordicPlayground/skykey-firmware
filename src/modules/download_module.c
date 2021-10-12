@@ -38,7 +38,8 @@ struct download_msg_data
     } module;
 };
 
-static enum state_type { STATE_DOWNLOADING,
+static enum state_type { STATE_DOWNLOADING, 
+			  STATE_SUSPENDED,
               STATE_FREE,
 } module_state = STATE_FREE;
 

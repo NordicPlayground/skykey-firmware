@@ -17,6 +17,7 @@
 #include "events/display_module_event.h"
 #include "events/download_module_event.h"
 #include "events/password_module_event.h"
+#include <caf/events/power_event.h>
 
 #define MODULE password_module
 
