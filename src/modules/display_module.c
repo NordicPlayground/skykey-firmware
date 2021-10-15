@@ -16,6 +16,7 @@
 #include <settings/settings.h>
 
 #include <caf/events/click_event.h>
+#include <caf/events/module_state_event.h>
 
 #define MODULE display_module
 
@@ -178,6 +179,57 @@ static void on_all_states(struct display_msg_data *msg)
 	return;
 }
 
+//========================================================================================
+/*                                                                                      *
+ *                                    Event handlers                                    *
+ *                                                                                      */
+//========================================================================================
+static bool handle_power_down_event(const struct power_down_event *event)
+{
+	switch (state)
+	{
+		case STATE_ACTIVE:
+			state = STATE_SHUTDOWN;
+			module_set_state(MODULE_STATE_OFF);
+		break;
+		case STATE_SHUTDOWN:
+		break;
+	// case STATE_DISABLED:
+	// 	state = STATE_DISABLED_STANDBY;
+	// 	break;
+
+	// case STATE_ERASE_PEER:
+	// case STATE_ERASE_ADV:
+	// case STATE_SELECT_PEER:
+	// 	cancel_operation();
+	// 	/* Fall-through */
+
+	// case STATE_IDLE:
+	// 	state = STATE_STANDBY;
+	// 	module_set_state(MODULE_STATE_OFF);
+	// 	break;
+
+	// case STATE_DONGLE_CONN:
+	// 	state = STATE_DONGLE_CONN_STANDBY;
+	// 	module_set_state(MODULE_STATE_OFF);
+	// 	break;
+
+	// case STATE_STANDBY:
+	// 	/* Fall-through */
+	// case STATE_DISABLED_STANDBY:
+	// 	/* Fall-through */
+	// case STATE_DONGLE_CONN_STANDBY:
+	// 	/* No action. */
+	// 	break;
+
+	default:
+		__ASSERT_NO_MSG(false);
+		break;
+	}
+
+	return false;
+}
+
 static bool event_handler(const struct event_header *eh)
 {
 	struct display_msg_data msg = {0};
@@ -227,6 +279,12 @@ int setup(void) {
 	return 0;
 }
 
+//========================================================================================
+/*                                                                                      *
+ *                                    Threads                                           *
+ *                                                                                      */
+//========================================================================================
+
 static void module_thread_fn(void) 
 {
 	LOG_DBG("Display module thread started");
@@ -250,6 +308,17 @@ static void module_thread_fn(void)
 	while (true) {
 		int err = module_get_next_msg(&self, &msg, K_MSEC(5));
 		if (!err) {
+			// if (IS_ENABLED(CONFIG_CAF_POWER_MANAGER) &&
+			// 	is_power_down_event(eh))
+			// {
+			// 	return handle_power_down_event(cast_power_down_event(eh));
+			// }
+
+			// if (IS_ENABLED(CONFIG_CAF_POWER_MANAGER) &&
+			// 	is_wake_up_event(eh))
+			// {
+			// 	return handle_wake_up_event(cast_wake_up_event(eh));
+			// }
 			switch (scr_state) {
 				case SCR_STATE_WELCOME:
 				on_state_scr_welcome(&msg);
@@ -270,8 +339,6 @@ static void module_thread_fn(void)
 		}
 		lv_task_handler();
 	}
-
-
 }
 
 K_THREAD_DEFINE(display_module_thread, CONFIG_DISPLAY_THREAD_STACK_SIZE,
@@ -281,3 +348,7 @@ K_THREAD_DEFINE(display_module_thread, CONFIG_DISPLAY_THREAD_STACK_SIZE,
 EVENT_LISTENER(MODULE, event_handler);
 EVENT_SUBSCRIBE(MODULE, click_event);
 EVENT_SUBSCRIBE(MODULE, password_module_event);
+#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
+EVENT_SUBSCRIBE(MODULE, power_down_event);
+EVENT_SUBSCRIBE(MODULE, wake_up_event);
+#endif

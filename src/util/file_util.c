@@ -45,7 +45,7 @@ int mount_fs(void) {
     }
     unsigned int id = (uintptr_t)mp->storage_dev;
 
-    snprintf(filename, sizeof(filename), "%s/my_passwordsss", mp->mnt_point);
+    snprintf(filename, sizeof(filename), "%s/my_passwords", mp->mnt_point);
 
     rc = fs_mount(mp);
     if (rc < 0)

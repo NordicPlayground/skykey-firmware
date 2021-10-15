@@ -23,6 +23,10 @@
 #include "events/cloud_module_event.h"
 
 #define MODULE download_module
+#include <caf/events/power_event.h>
+#include <caf/events/module_state_event.h>
+#include <caf/events/power_manager_event.h>
+#include <caf/events/keep_alive_event.h>
 
 #include "modules_common.h"
 
@@ -39,9 +43,9 @@ struct download_msg_data
 };
 
 static enum state_type { STATE_DOWNLOADING, 
-			  STATE_SUSPENDED,
-              STATE_FREE,
-} module_state = STATE_FREE;
+			  STATE_SHUTDOWN,
+              STATE_IDLE,
+} module_state = STATE_IDLE;
 
 /* Download module message queue. */
 #define DOWNLOAD_QUEUE_ENTRY_COUNT 10
@@ -74,8 +78,10 @@ static char *state2str(enum state_type new_state)
 	{
 	case STATE_DOWNLOADING:
 		return "STATE_DOWNLOADING";
-	case STATE_FREE:
-		return "STATE_FREE";
+	case STATE_IDLE:
+		return "STATE_IDLE";
+	case STATE_SHUTDOWN:
+		return "STATE_SHUTDOWN";
 	default:
 		return "Unknown";
 	}
@@ -134,7 +140,7 @@ static int handle_file_fragment(const void * const fragment, size_t frag_size, s
  *                                                                                      */
 //========================================================================================
 
-static void on_state_free(struct download_msg_data *msg)
+static void on_state_idle(struct download_msg_data *msg)
 {
 	int err;
     if (IS_EVENT(msg, cloud, CLOUD_EVT_DATABASE_UPDATE_AVAILABLE)) {
@@ -178,7 +184,7 @@ static int download_client_callback(const struct download_client_evt *event)
 				SEND_ERROR(download, DOWNLOAD_EVT_STORAGE_ERROR, err);
 				download_client_disconnect(&dl_client);
 				file_close_and_unmount();
-				state_set(STATE_FREE);
+				state_set(STATE_IDLE);
 				LOG_ERR("Could not store file. Cancelling download.");
 				return err;
 			}
@@ -201,7 +207,8 @@ static int download_client_callback(const struct download_client_evt *event)
 	case DOWNLOAD_CLIENT_EVT_DONE: {
 		download_client_disconnect(&dl_client);
 		file_close_and_unmount();
-		state_set(STATE_FREE);
+		//FOR TESTING PURPOSES
+		// state_set(STATE_IDLE);
 		LOG_DBG("Download complete");
 		first_fragment = true;
 		SEND_EVENT(download, DOWNLOAD_EVT_DOWNLOAD_FINISHED);
@@ -252,6 +259,23 @@ static bool event_handler(const struct event_header *eh)
         enqueue_msg = true;
     }
 
+	if (IS_ENABLED(CONFIG_CAF_POWER_MANAGER) && is_power_down_event(eh)) {
+		if (module_state == STATE_DOWNLOADING) {
+			// Consume event if we are downloading: we are not ready to shut down!
+			LOG_DBG("Currently downloading. Consumed power down event");
+			keep_alive();
+			return true;
+		} else {
+			state_set(STATE_SHUTDOWN);
+			module_set_state(MODULE_STATE_OFF);
+		}
+	}
+
+	if (IS_ENABLED(CONFIG_CAF_POWER_MANAGER) && is_wake_up_event(eh)) {
+		state_set(STATE_IDLE);
+		module_set_state(MODULE_STATE_READY);
+	}
+
     if (enqueue_msg) {
         int err = module_enqueue_msg(&self, &msg);
 
@@ -286,7 +310,7 @@ static int setup(void)
 		return err;
 	}
 
-	state_set(STATE_FREE);
+	state_set(STATE_IDLE);
 	first_fragment = true;
 	socket_retries_left = CONFIG_DOWNLOAD_SOCKET_RETRIES;
     return err;
@@ -323,17 +347,16 @@ static void module_thread_fn(void)
         module_get_next_msg(&self, &msg, K_FOREVER);
         switch (module_state)
         {
-        case STATE_FREE:
-        {
-            on_state_free(&msg);
-
+        case STATE_IDLE:
+            on_state_idle(&msg);
             break;
-        }
         case STATE_DOWNLOADING:
-        {
             on_state_downloading(&msg);
             break;
-        }
+		case STATE_SHUTDOWN:
+
+			break;
+			
         default:
             LOG_ERR("Unknown state %d", module_state);
         }
@@ -347,3 +370,7 @@ K_THREAD_DEFINE(download_module_thread, CONFIG_DOWNLOAD_THREAD_STACK_SIZE,
 
 EVENT_LISTENER(MODULE, event_handler);
 EVENT_SUBSCRIBE(MODULE, cloud_module_event);
+#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
+EVENT_SUBSCRIBE_EARLY(MODULE, power_down_event);
+EVENT_SUBSCRIBE(MODULE, wake_up_event);
+#endif

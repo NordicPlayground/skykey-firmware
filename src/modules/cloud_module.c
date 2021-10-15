@@ -22,7 +22,6 @@
 #include "events/download_module_event.h"
 #include "events/modem_module_event.h"
 #include <caf/events/power_event.h>
-#include <caf/events/power_manager_event.h>
 
 
 #define MODULE cloud_module
@@ -657,9 +656,6 @@ static int setup(void)
 		LOG_ERR("cloud_configure, error: %d", err);
 		return err;
 	}
-
-	//For testing purposes:
-	power_manager_restrict(MODULE_IDX(MODULE), POWER_MANAGER_LEVEL_SUSPENDED);
 
 	err = snprintf(update_delta_topic, sizeof(update_delta_topic), UPDATE_DELTA_TOPIC,
 				   client_id_buf);

@@ -17,6 +17,10 @@
 #include "modules_common.h"
 #include "events/modem_module_event.h"
 #include "events/cloud_module_event.h"
+#include <caf/events/power_event.h>
+#include <caf/events/module_state_event.h>
+#include <caf/events/power_manager_event.h>
+
 
 #include <logging/log.h>
 LOG_MODULE_REGISTER(MODULE, CONFIG_MODEM_MODULE_LOG_LEVEL);
@@ -37,6 +41,7 @@ struct modem_msg_data
 static enum state_type { STATE_DISCONNECTED,
                          STATE_CONNECTING,
                          STATE_CONNECTED,
+                         STATE_SUSPENDED,
                          STATE_SHUTDOWN,
 } state;
 
@@ -76,6 +81,8 @@ static char *state2str(enum state_type state)
         return "STATE_CONNECTING";
     case STATE_CONNECTED:
         return "STATE_CONNECTED";
+    case STATE_SUSPENDED:
+        return "STATE_SUSPENDED";
     case STATE_SHUTDOWN:
         return "STATE_SHUTDOWN";
     default:
@@ -118,6 +125,33 @@ static bool event_handler(const struct event_header *eh)
 
         msg.module.cloud = *evt;
         enqueue_msg = true;
+    }
+    if (IS_ENABLED(CONFIG_CAF_POWER_MANAGER) && is_power_down_event(eh))
+    {
+        int err;
+        err = lte_lc_psm_req(true);
+        if (err)
+        {
+            LOG_ERR("lte_lc_psm_req, error: %d", err);
+            return err;
+        }
+        state_set(STATE_SUSPENDED);
+        module_set_state(MODULE_STATE_OFF);
+        LOG_DBG("PSM enabled");
+    }
+
+    if (IS_ENABLED(CONFIG_CAF_POWER_MANAGER) && is_wake_up_event(eh))
+    {
+        int err;
+        err = lte_lc_psm_req(false);
+        if (err)
+        {
+            LOG_ERR("lte_lc_psm_req, error: %d", err);
+            return err;
+        }
+        state_set(STATE_DISCONNECTED);
+        module_set_state(MODULE_STATE_READY);
+        LOG_DBG("PSM disabled");
     }
 
     if (enqueue_msg)
@@ -346,6 +380,11 @@ static int setup(void)
         return err;
     }
 
+    //For testing purposes:
+    if (IS_ENABLED(CONFIG_CAF_POWER_MANAGER)) {
+        power_manager_restrict(MODULE_IDX(MODULE), POWER_MANAGER_LEVEL_SUSPENDED);
+    }
+
     return 0;
 }
 
@@ -443,6 +482,8 @@ static void module_thread_fn(void)
         case STATE_CONNECTED:
             on_state_connected(&msg);
             break;
+        case STATE_SUSPENDED:
+            break;
         case STATE_SHUTDOWN:
             /* The shutdown state has no transition. */
             break;
@@ -461,5 +502,9 @@ K_THREAD_DEFINE(modem_module_thread, CONFIG_MODEM_THREAD_STACK_SIZE,
 
 EVENT_LISTENER(MODULE, event_handler);
 EVENT_SUBSCRIBE_EARLY(MODULE, modem_module_event);
+#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
+EVENT_SUBSCRIBE(MODULE, power_down_event);
+EVENT_SUBSCRIBE(MODULE, wake_up_event);
+#endif
 EVENT_SUBSCRIBE(MODULE, cloud_module_event);
 EVENT_SUBSCRIBE_FINAL(MODULE, util_module_event);
