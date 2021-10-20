@@ -35,7 +35,7 @@ endif()
 set(CONF_FILE "configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf")
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project("Skykey-Firmware")
+project("Skykey-Firmware-nRF9160")
 
 # Application sources
 # NORDIC SDK APP START
