@@ -47,6 +47,10 @@ static enum state_type { STATE_DOWNLOADING,
               STATE_IDLE,
 } module_state = STATE_IDLE;
 
+static enum substate_type { SUBSTATE_SHUTDOWN_PENDING,
+			  SUBSTATE_DEFAULT,
+} module_substate = SUBSTATE_DEFAULT;
+
 /* Download module message queue. */
 #define DOWNLOAD_QUEUE_ENTRY_COUNT 10
 #define DOWNLOAD_QUEUE_BYTE_ALIGNMENT 4
@@ -86,6 +90,32 @@ static char *state2str(enum state_type new_state)
 		return "Unknown";
 	}
 }
+static char *substate2str(enum substate_type new_substate)
+{
+	switch (new_substate)
+	{
+	case SUBSTATE_DEFAULT:
+		return "SUBSTATE_DEFAULT";
+	case SUBSTATE_SHUTDOWN_PENDING:
+		return "SUBSTATE_SHUTDOWN_PENDING";
+	default:
+		return "Unknown";
+	}
+}
+
+static void substate_set(enum substate_type new_substate) 
+{
+	if (new_substate == module_substate)
+	{
+		LOG_DBG("State: %s", substate2str(module_substate));
+		return;
+	}
+
+	LOG_DBG("State transition: %s --> %s",
+			substate2str(module_substate),
+			substate2str(new_substate));
+	module_substate = new_substate;
+}
 
 static void state_set(enum state_type new_state)
 {
@@ -93,6 +123,16 @@ static void state_set(enum state_type new_state)
 	{
 		LOG_DBG("State: %s", state2str(module_state));
 		return;
+	}
+
+	if (new_state == STATE_IDLE && module_state == STATE_SHUTDOWN) {
+		module_set_state(MODULE_STATE_READY);
+	}
+
+	if (module_substate == SUBSTATE_SHUTDOWN_PENDING)
+	{
+		substate_set(SUBSTATE_DEFAULT);
+		module_set_state(MODULE_STATE_OFF);
 	}
 
 	LOG_DBG("State transition: %s --> %s",
@@ -207,8 +247,7 @@ static int download_client_callback(const struct download_client_evt *event)
 	case DOWNLOAD_CLIENT_EVT_DONE: {
 		download_client_disconnect(&dl_client);
 		file_close_and_unmount();
-		//FOR TESTING PURPOSES
-		// state_set(STATE_IDLE);
+		state_set(STATE_IDLE);
 		LOG_DBG("Download complete");
 		first_fragment = true;
 		SEND_EVENT(download, DOWNLOAD_EVT_DOWNLOAD_FINISHED);
@@ -229,6 +268,7 @@ static int download_client_callback(const struct download_client_evt *event)
 			download_client_disconnect(&dl_client);
 			file_close_and_unmount();
 			first_fragment = true;
+			module_set_state(STATE_IDLE);
 			int err = event->error; /* Glue for logging */
 			LOG_ERR("An error occured while downloading: %d", err);
 			SEND_ERROR(download, DOWNLOAD_EVT_ERROR, err);
@@ -263,17 +303,18 @@ static bool event_handler(const struct event_header *eh)
 		if (module_state == STATE_DOWNLOADING) {
 			// Consume event if we are downloading: we are not ready to shut down!
 			LOG_DBG("Currently downloading. Consumed power down event");
-			keep_alive();
+			substate_set(SUBSTATE_SHUTDOWN_PENDING);
 			return true;
 		} else {
 			state_set(STATE_SHUTDOWN);
-			module_set_state(MODULE_STATE_OFF);
 		}
 	}
 
 	if (IS_ENABLED(CONFIG_CAF_POWER_MANAGER) && is_wake_up_event(eh)) {
+		// struct wake_up_event *evt = cast_wake_up_event(eh);
+		// enqueue_msg = true;
+		substate_set(SUBSTATE_DEFAULT);
 		state_set(STATE_IDLE);
-		module_set_state(MODULE_STATE_READY);
 	}
 
     if (enqueue_msg) {
@@ -354,7 +395,6 @@ static void module_thread_fn(void)
             on_state_downloading(&msg);
             break;
 		case STATE_SHUTDOWN:
-
 			break;
 			
         default:
