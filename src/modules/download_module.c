@@ -47,9 +47,9 @@ static enum state_type { STATE_DOWNLOADING,
               STATE_IDLE,
 } module_state = STATE_IDLE;
 
-static enum substate_type { SUBSTATE_SHUTDOWN_PENDING,
-			  SUBSTATE_DEFAULT,
-} module_substate = SUBSTATE_DEFAULT;
+static enum sub_state_type { SUB_STATE_SHUTDOWN_PENDING,
+			  SUB_STATE_DEFAULT,
+} module_sub_state = SUB_STATE_DEFAULT;
 
 /* Download module message queue. */
 #define DOWNLOAD_QUEUE_ENTRY_COUNT 10
@@ -90,31 +90,31 @@ static char *state2str(enum state_type new_state)
 		return "Unknown";
 	}
 }
-static char *substate2str(enum substate_type new_substate)
+static char *sub_state2str(enum sub_state_type new_sub_state)
 {
-	switch (new_substate)
+	switch (new_sub_state)
 	{
-	case SUBSTATE_DEFAULT:
-		return "SUBSTATE_DEFAULT";
-	case SUBSTATE_SHUTDOWN_PENDING:
-		return "SUBSTATE_SHUTDOWN_PENDING";
+	case SUB_STATE_DEFAULT:
+		return "SUB_STATE_DEFAULT";
+	case SUB_STATE_SHUTDOWN_PENDING:
+		return "SUB_STATE_SHUTDOWN_PENDING";
 	default:
 		return "Unknown";
 	}
 }
 
-static void substate_set(enum substate_type new_substate) 
+static void sub_state_set(enum sub_state_type new_sub_state) 
 {
-	if (new_substate == module_substate)
+	if (new_sub_state == module_sub_state)
 	{
-		LOG_DBG("State: %s", substate2str(module_substate));
+		LOG_DBG("State: %s", sub_state2str(module_sub_state));
 		return;
 	}
 
 	LOG_DBG("State transition: %s --> %s",
-			substate2str(module_substate),
-			substate2str(new_substate));
-	module_substate = new_substate;
+			sub_state2str(module_sub_state),
+			sub_state2str(new_sub_state));
+	module_sub_state = new_sub_state;
 }
 
 static void state_set(enum state_type new_state)
@@ -125,15 +125,19 @@ static void state_set(enum state_type new_state)
 		return;
 	}
 
+	if (module_sub_state == SUB_STATE_SHUTDOWN_PENDING)
+	{
+		sub_state_set(SUB_STATE_DEFAULT);
+		state_set(STATE_SHUTDOWN);
+		module_set_state(MODULE_STATE_OFF);
+		return;
+	}
+
 	if (new_state == STATE_IDLE && module_state == STATE_SHUTDOWN) {
 		module_set_state(MODULE_STATE_READY);
 	}
 
-	if (module_substate == SUBSTATE_SHUTDOWN_PENDING)
-	{
-		substate_set(SUBSTATE_DEFAULT);
-		module_set_state(MODULE_STATE_OFF);
-	}
+
 
 	LOG_DBG("State transition: %s --> %s",
 			state2str(module_state),
@@ -303,7 +307,7 @@ static bool event_handler(const struct event_header *eh)
 		if (module_state == STATE_DOWNLOADING) {
 			// Consume event if we are downloading: we are not ready to shut down!
 			LOG_DBG("Currently downloading. Consumed power down event");
-			substate_set(SUBSTATE_SHUTDOWN_PENDING);
+			sub_state_set(SUB_STATE_SHUTDOWN_PENDING);
 			return true;
 		} else {
 			state_set(STATE_SHUTDOWN);
@@ -313,7 +317,7 @@ static bool event_handler(const struct event_header *eh)
 	if (IS_ENABLED(CONFIG_CAF_POWER_MANAGER) && is_wake_up_event(eh)) {
 		// struct wake_up_event *evt = cast_wake_up_event(eh);
 		// enqueue_msg = true;
-		substate_set(SUBSTATE_DEFAULT);
+		sub_state_set(SUB_STATE_DEFAULT);
 		state_set(STATE_IDLE);
 	}
 
