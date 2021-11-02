@@ -33,6 +33,11 @@ BUILD_ASSERT(CONFIG_DISPLAY_LIST_ENTRY_MAX_NUM == CONFIG_PASSWORD_ENTRY_MAX_NUM)
 BUILD_ASSERT(CONFIG_DISPLAY_LIST_ENTRY_MAX_LEN == CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN);
 #endif
 
+#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
+static int timeout_delay = CONFIG_CAF_POWER_MANAGER_TIMEOUT;
+static int remaining_time = CONFIG_CAF_POWER_MANAGER_TIMEOUT;
+#endif
+
 struct display_msg_data {
 
 	/* module_id needed to detect click event (cannot use IS_EVENT macro) */
@@ -176,6 +181,7 @@ static void on_all_states(struct display_msg_data *msg)
 	{
 		set_platform_list_contents((const char *)msg->module.password.data.entries);
 	}
+
 	return;
 }
 
