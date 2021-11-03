@@ -4,15 +4,9 @@
 # SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
 #
 
-menu "Skykey Firmware"
+menu "Skykey Firmware: nRF9160"
 
-config SKYKEY_FW_VERSION
-    string "Firmware version"
-    default "0.0.0"
-
-config SKYKEY_BOARD_VERSION
-    string "Board version"
-    default "0.0.0"
+rsource "../common/Kconfig/Kconfig"
 
 rsource "src/modules/Kconfig"
 

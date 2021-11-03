@@ -28,11 +28,17 @@ if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/app_${CMAKE_B
           "Please add file ${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf")
 endif()
 
+if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../common/Kconfig/app_${CMAKE_BUILD_TYPE}.conf")
+  message(FATAL_ERROR
+          "Configuration file for build type ${CMAKE_BUILD_TYPE} is missing.\n"
+          "Please add file ${CMAKE_CURRENT_SOURCE_DIR}/../common/Kconfig/app_${CMAKE_BUILD_TYPE}.conf")
+endif()
+
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/${BOARD}.overlay")
   set(DTC_OVERLAY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/${BOARD}.overlay;${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/st7789v.overlay")
 endif()
 # Define configuration files.
-set(CONF_FILE "configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf")
+set(CONF_FILE "configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf;../common/Kconfig/app_${CMAKE_BUILD_TYPE}.conf")
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project("Skykey-Firmware-nRF9160")

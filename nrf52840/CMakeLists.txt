@@ -2,7 +2,15 @@
 
 cmake_minimum_required(VERSION 3.13.1)
 
+if (NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE ZDebug)
+endif()
+
+set(CONF_FILE "prj.conf;../common/Kconfig/app_${CMAKE_BUILD_TYPE}.conf")
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(hello_world)
+
+
 
 target_sources(app PRIVATE src/main.c)
