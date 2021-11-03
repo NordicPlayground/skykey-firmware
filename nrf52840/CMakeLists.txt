@@ -1,16 +1,59 @@
-# SPDX-License-Identifier: Apache-2.0
 
-cmake_minimum_required(VERSION 3.13.1)
+#
+# Copyright (c) 2021 Nordic Semiconductor
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+cmake_minimum_required(VERSION 3.16.0)
 
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE ZDebug)
 endif()
 
-set(CONF_FILE "prj.conf;../common/Kconfig/app_${CMAKE_BUILD_TYPE}.conf")
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+
+if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}")
+  message(FATAL_ERROR
+          "Board ${BOARD} is not supported.\n"
+          "Please make sure board specific configuration files are added to "
+          "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}")
+endif()
+
+if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf")
+  message(FATAL_ERROR
+          "Configuration file for build type ${CMAKE_BUILD_TYPE} is missing.\n"
+          "Please add file ${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf")
+endif()
+
+if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../common/Kconfig/app_${CMAKE_BUILD_TYPE}.conf")
+  message(FATAL_ERROR
+          "Configuration file for build type ${CMAKE_BUILD_TYPE} is missing.\n"
+          "Please add file ${CMAKE_CURRENT_SOURCE_DIR}/../common/Kconfig/app_${CMAKE_BUILD_TYPE}.conf")
+endif()
+
+# Define configuration files.
+set(CONF_FILE "configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf;../common/Kconfig/app_${CMAKE_BUILD_TYPE}.conf")
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(hello_world)
+project("Skykey-Firmware-nRF52840")
 
-
-
+# Application sources
+# NORDIC SDK APP START
 target_sources(app PRIVATE src/main.c)
+# NORDIC SDK APP END
+
+# Include source directory
+target_include_directories(app PRIVATE src)
+
+# Application directories
+add_subdirectory(src/modules)
+add_subdirectory(src/events)
+add_subdirectory(src/util)
+
+# Include configuration headers
+zephyr_include_directories(
+  configuration/${BOARD}
+)
