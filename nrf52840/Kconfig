@@ -1,0 +1,13 @@
+menu "Skykey Firmware: nRF52840"
+
+rsource "../common/Kconfig/Kconfig"
+
+endmenu
+
+menu "Zephyr Kernel"
+source "Kconfig.zephyr"
+endmenu
+
+module = APPLICATION_MODULE
+module-str = Application module
+source "subsys/logging/Kconfig.template.log_config"
