@@ -16,4 +16,4 @@ manifest:
       import: true
       
   self:
-    path: skykey-firmware/nrf9160
+    path: skykey-firmware
