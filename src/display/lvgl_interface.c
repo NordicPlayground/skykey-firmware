@@ -189,6 +189,8 @@ void build_pages(void)
     lv_obj_align(label_transmit_info, scr_transmit, LV_ALIGN_CENTER, 0, 0);
 }
 
+
+
 //========================================================================================
 /*                                                                                      *
  *                                 Execution of commands                                *
@@ -199,6 +201,14 @@ void lvgl_widgets_init(void)
 {
     build_pages();
     change_screen(scr_welcome);
+}
+
+void lvgl_widgets_clear(void)
+{
+    lv_obj_clean(scr_welcome);
+    lv_obj_clean(scr_transmit);
+    lv_obj_clean(scr_fingerprint);
+    lv_obj_clean(scr_select_platform);
 }
 
 struct display_data get_highlighted_option(void) 

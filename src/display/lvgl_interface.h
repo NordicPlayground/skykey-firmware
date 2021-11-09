@@ -25,6 +25,7 @@ enum scr_state_type { SCR_STATE_WELCOME,
 };
 
 void lvgl_widgets_init(void);
+void lvgl_widgets_clear(void);
 void set_timer(int elapsed_time);
 void set_platform_list_contents(const char *platform_names);
 void set_screen(enum scr_state_type to_screen);

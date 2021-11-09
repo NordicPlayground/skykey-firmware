@@ -14,6 +14,7 @@
 #include <event_manager.h>
 #include <stdint.h>
 #include <settings/settings.h>
+#include <sys/reboot.h>
 
 #include <caf/events/click_event.h>
 #include <caf/events/module_state_event.h>
@@ -28,15 +29,20 @@
 #include <logging/log.h>
 LOG_MODULE_REGISTER(MODULE, CONFIG_DISPLAY_MODULE_LOG_LEVEL);
 
+#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
+#include <caf/events/power_event.h>
+#include <sys_clock.h>
+static int timeout_delay = CONFIG_CAF_POWER_MANAGER_TIMEOUT;
+static int remaining_time = CONFIG_CAF_POWER_MANAGER_TIMEOUT;
+#endif
+
 #if IS_ENABLED(CONFIG_PASSWORD_MODULE)
 BUILD_ASSERT(CONFIG_DISPLAY_LIST_ENTRY_MAX_NUM == CONFIG_PASSWORD_ENTRY_MAX_NUM);
 BUILD_ASSERT(CONFIG_DISPLAY_LIST_ENTRY_MAX_LEN == CONFIG_PASSWORD_ENTRY_NAME_MAX_LEN);
 #endif
 
-#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
-static int timeout_delay = CONFIG_CAF_POWER_MANAGER_TIMEOUT;
-static int remaining_time = CONFIG_CAF_POWER_MANAGER_TIMEOUT;
-#endif
+// Forward declarations
+static int setup(void);
 
 struct display_msg_data {
 
@@ -45,18 +51,27 @@ struct display_msg_data {
     union {
         struct click_event btn;
 		struct password_module_event password;
+		#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
+		struct power_down_event power_down;
+		struct wake_up_event wake_up;
+		#endif
     } module;
 };
 
-enum module_id {
+enum module_id
+{
 	CLICK_EVENT,
-	PASSWORD_MODULE_EVENT
+	PASSWORD_MODULE_EVENT,
+#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
+	POWER_DOWN_EVENT,
+	WAKE_UP_EVENT
+#endif
 };
 
 /* Display module states. */
 static enum state_type { STATE_ACTIVE,
 						 STATE_SHUTDOWN
-} state;
+} state = STATE_ACTIVE;
 
 /**
  * Numbers describe the index of the buttons defined in buttons_def.h
@@ -82,7 +97,7 @@ static struct module_data self = {
 
 static enum scr_state_type scr_state = SCR_STATE_WELCOME;
 
-static char *state2str(enum scr_state_type new_state)
+static char *scr_state2str(enum scr_state_type new_state)
 {
 	switch (new_state)
 	{
@@ -103,16 +118,47 @@ static void scr_state_set(enum scr_state_type new_state)
 {
 	if (new_state == scr_state)
 	{
-		LOG_DBG("State: %s", state2str(scr_state));
+		LOG_DBG("Screen state: %s", scr_state2str(scr_state));
 		return;
 	}
 
 	set_screen(new_state);
 
+	LOG_DBG("Screen state transition: %s --> %s",
+			scr_state2str(scr_state),
+			scr_state2str(new_state));
+	scr_state = new_state;
+}
+
+static char *state2str(enum state_type new_state)
+{
+	switch (new_state)
+	{
+	case STATE_ACTIVE:
+		return "STATE_ACTIVE";
+	case STATE_SHUTDOWN:
+		return "STATE_SHUTDOWN";
+	default:
+		return "Unknown";
+	}
+}
+
+static void state_set(enum state_type new_state)
+{
+	if (new_state == state)
+	{
+		LOG_DBG("State: %s", state2str(state));
+		return;
+	}
+
+	if (new_state == STATE_ACTIVE) {
+		scr_state_set(SCR_STATE_WELCOME);
+	}
+
 	LOG_DBG("State transition: %s --> %s",
 			state2str(scr_state),
 			state2str(new_state));
-	scr_state = new_state;
+	state = new_state;
 }
 
 //========================================================================================
@@ -195,39 +241,13 @@ static bool handle_power_down_event(const struct power_down_event *event)
 	switch (state)
 	{
 		case STATE_ACTIVE:
-			state = STATE_SHUTDOWN;
-			module_set_state(MODULE_STATE_OFF);
+			lvgl_widgets_clear();
+			
+			state_set(STATE_SHUTDOWN);
+			// module_set_state(MODULE_STATE_OFF);
 		break;
 		case STATE_SHUTDOWN:
 		break;
-	// case STATE_DISABLED:
-	// 	state = STATE_DISABLED_STANDBY;
-	// 	break;
-
-	// case STATE_ERASE_PEER:
-	// case STATE_ERASE_ADV:
-	// case STATE_SELECT_PEER:
-	// 	cancel_operation();
-	// 	/* Fall-through */
-
-	// case STATE_IDLE:
-	// 	state = STATE_STANDBY;
-	// 	module_set_state(MODULE_STATE_OFF);
-	// 	break;
-
-	// case STATE_DONGLE_CONN:
-	// 	state = STATE_DONGLE_CONN_STANDBY;
-	// 	module_set_state(MODULE_STATE_OFF);
-	// 	break;
-
-	// case STATE_STANDBY:
-	// 	/* Fall-through */
-	// case STATE_DISABLED_STANDBY:
-	// 	/* Fall-through */
-	// case STATE_DONGLE_CONN_STANDBY:
-	// 	/* No action. */
-	// 	break;
-
 	default:
 		__ASSERT_NO_MSG(false);
 		break;
@@ -236,10 +256,46 @@ static bool handle_power_down_event(const struct power_down_event *event)
 	return false;
 }
 
+static bool handle_wake_up_event(const struct wake_up_event *event)
+{
+	switch (state)
+	{
+		case STATE_ACTIVE:
+			break;
+		case STATE_SHUTDOWN:
+			sys_reboot(SYS_REBOOT_WARM); // This might be the only way...
+			LOG_DBG("Setting up screen anew");
+			setup();
+			lv_task_handler();
+			state_set(STATE_ACTIVE);
+			// module_set_state(MODULE_STATE_READY);
+			break;
+		default:
+			__ASSERT_NO_MSG(false);
+			break;
+	}
+	return false;
+}
+
 static bool event_handler(const struct event_header *eh)
 {
 	struct display_msg_data msg = {0};
 	bool enqueue_msg = false;
+	if (is_power_down_event(eh))
+	{
+		return handle_power_down_event(cast_power_down_event(eh));
+	}
+
+	if (is_wake_up_event(eh))
+	{
+		return handle_wake_up_event(cast_wake_up_event(eh));
+	}
+
+	if (state == STATE_SHUTDOWN) {
+		// Ignore messages if we are shut down
+		return false;
+	}
+
     if (is_click_event(eh)) {
         struct click_event *event = cast_click_event(eh);
 		msg.module_id = CLICK_EVENT;
@@ -279,7 +335,7 @@ int setup(void) {
 	lvgl_widgets_init();
 	struct display_module_event *display_module_event =
 		new_display_module_event();
-
+	LOG_DBG("Device usable: %d", device_usable_check(display_dev));
 	display_module_event->type = DISPLAY_EVT_REQUEST_PLATFORMS;
 	EVENT_SUBMIT(display_module_event);
 	return 0;
@@ -312,19 +368,15 @@ static void module_thread_fn(void)
 	lv_task_handler();
 
 	while (true) {
-		int err = module_get_next_msg(&self, &msg, K_MSEC(5));
+		if (state == STATE_SHUTDOWN) {
+			return;
+			err = module_get_next_msg(&self, &msg, K_FOREVER);
+			setup();
+			lv_task_handler();
+		} else {
+			err = module_get_next_msg(&self, &msg, K_MSEC(5));
+		}
 		if (!err) {
-			// if (IS_ENABLED(CONFIG_CAF_POWER_MANAGER) &&
-			// 	is_power_down_event(eh))
-			// {
-			// 	return handle_power_down_event(cast_power_down_event(eh));
-			// }
-
-			// if (IS_ENABLED(CONFIG_CAF_POWER_MANAGER) &&
-			// 	is_wake_up_event(eh))
-			// {
-			// 	return handle_wake_up_event(cast_wake_up_event(eh));
-			// }
 			switch (scr_state) {
 				case SCR_STATE_WELCOME:
 				on_state_scr_welcome(&msg);
@@ -343,7 +395,7 @@ static void module_thread_fn(void)
 			}
 			on_all_states(&msg);
 		}
-		lv_task_handler();
+			lv_task_handler();
 	}
 }
 
@@ -355,6 +407,6 @@ EVENT_LISTENER(MODULE, event_handler);
 EVENT_SUBSCRIBE(MODULE, click_event);
 EVENT_SUBSCRIBE(MODULE, password_module_event);
 #if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
-EVENT_SUBSCRIBE(MODULE, power_down_event);
+EVENT_SUBSCRIBE_EARLY(MODULE, power_down_event);
 EVENT_SUBSCRIBE(MODULE, wake_up_event);
 #endif
