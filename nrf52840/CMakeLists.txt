@@ -34,6 +34,10 @@ if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../common/Kconfig/app_${CMAKE_BUILD_
           "Please add file ${CMAKE_CURRENT_SOURCE_DIR}/../common/Kconfig/app_${CMAKE_BUILD_TYPE}.conf")
 endif()
 
+if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/${BOARD}.overlay")
+  set(DTC_OVERLAY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/configuration/${BOARD}/${BOARD}.overlay;")
+endif()
+
 # Define configuration files.
 set(CONF_FILE "configuration/${BOARD}/app_${CMAKE_BUILD_TYPE}.conf;../common/Kconfig/app_${CMAKE_BUILD_TYPE}.conf")
 
