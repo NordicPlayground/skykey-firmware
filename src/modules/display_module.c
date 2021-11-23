@@ -31,7 +31,7 @@ LOG_MODULE_REGISTER(MODULE, CONFIG_DISPLAY_MODULE_LOG_LEVEL);
 
 #if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
 #include <caf/events/power_event.h>
-#include <sys_clock.h>
+#include <sys_clock.h>	
 static int timeout_delay = CONFIG_CAF_POWER_MANAGER_TIMEOUT;
 static int remaining_time = CONFIG_CAF_POWER_MANAGER_TIMEOUT;
 #endif
@@ -43,6 +43,12 @@ BUILD_ASSERT(CONFIG_DISPLAY_LIST_ENTRY_MAX_LEN == CONFIG_PASSWORD_ENTRY_NAME_MAX
 
 // Forward declarations
 static int setup(void);
+#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
+static bool handle_power_down_event(struct power_down_event *event);
+static bool handle_wake_up_event(struct wake_up_event* event);
+#endif
+
+K_TIMER_DEFINE(elapsed_time, NULL, NULL);
 
 struct display_msg_data {
 
@@ -122,7 +128,7 @@ static void scr_state_set(enum scr_state_type new_state)
 		return;
 	}
 
-	set_screen(new_state);
+	disp_set_screen(new_state);
 
 	LOG_DBG("Screen state transition: %s --> %s",
 			scr_state2str(scr_state),
@@ -151,9 +157,12 @@ static void state_set(enum state_type new_state)
 		return;
 	}
 
-	if (new_state == STATE_ACTIVE) {
+	if (new_state == STATE_SHUTDOWN) {
 		scr_state_set(SCR_STATE_WELCOME);
 	}
+	// if (new_state == STATE_ACTIVE) {
+	// 	scr_state_set(SCR_STATE_WELCOME);
+	// }
 
 	LOG_DBG("State transition: %s --> %s",
 			state2str(scr_state),
@@ -184,12 +193,12 @@ static void on_state_scr_select_platform(struct display_msg_data *msg)
 			if (click == CLICK_LONG) {
 				scr_state_set(SCR_STATE_WELCOME);
 			} else {
-				scroll_platform_list(false);
+				disp_scroll_platform_list(false);
 			}
 		} else if (button_pressed == BTN_UP) {
 			if (click == CLICK_LONG) {
 				const struct display_data feedback =
-					get_highlighted_option();
+					disp_get_highlighted_option();
 				if (feedback.id == DISPLAY_PLATFORM_CHOSEN){
 					struct display_module_event *display_module_event =
 						new_display_module_event();
@@ -200,7 +209,7 @@ static void on_state_scr_select_platform(struct display_msg_data *msg)
 					scr_state_set(SCR_STATE_TRANSMIT);
 				}
 			} else {
-				scroll_platform_list(true);
+				disp_scroll_platform_list(true);
 			}
 		}
 	}
@@ -223,9 +232,15 @@ static void on_state_scr_transmit(struct display_msg_data *msg)
 
 static void on_all_states(struct display_msg_data *msg) 
 {
+	if (msg->module_id == WAKE_UP_EVENT) {
+		handle_wake_up_event(&(msg->module.wake_up));
+	}
+	if (msg->module_id == POWER_DOWN_EVENT) {
+		handle_power_down_event(&(msg->module.power_down));
+	}
 	if (IS_EVENT(msg, password, PASSWORD_EVT_READ_PLATFORMS))
 	{
-		set_platform_list_contents((const char *)msg->module.password.data.entries);
+		disp_set_platform_list_contents((const char *)msg->module.password.data.entries);
 	}
 
 	return;
@@ -236,13 +251,13 @@ static void on_all_states(struct display_msg_data *msg)
  *                                    Event handlers                                    *
  *                                                                                      */
 //========================================================================================
-static bool handle_power_down_event(const struct power_down_event *event)
+static bool handle_power_down_event(struct power_down_event *event)
 {
 	switch (state)
 	{
 		case STATE_ACTIVE:
-			lvgl_widgets_clear();
-			
+			// disp_widgets_clear();
+			k_timer_stop(&elapsed_time);
 			state_set(STATE_SHUTDOWN);
 			// module_set_state(MODULE_STATE_OFF);
 		break;
@@ -256,18 +271,20 @@ static bool handle_power_down_event(const struct power_down_event *event)
 	return false;
 }
 
-static bool handle_wake_up_event(const struct wake_up_event *event)
+static bool handle_wake_up_event(struct wake_up_event *event)
 {
 	switch (state)
 	{
 		case STATE_ACTIVE:
 			break;
 		case STATE_SHUTDOWN:
-			sys_reboot(SYS_REBOOT_WARM); // This might be the only way...
+			// sys_reboot(SYS_REBOOT_WARM); // This might be the only way...
 			LOG_DBG("Setting up screen anew");
-			setup();
-			lv_task_handler();
+			// setup();
 			state_set(STATE_ACTIVE);
+			lv_task_handler();
+
+
 			// module_set_state(MODULE_STATE_READY);
 			break;
 		default:
@@ -281,22 +298,31 @@ static bool event_handler(const struct event_header *eh)
 {
 	struct display_msg_data msg = {0};
 	bool enqueue_msg = false;
-	if (is_power_down_event(eh))
-	{
-		return handle_power_down_event(cast_power_down_event(eh));
-	}
 
 	if (is_wake_up_event(eh))
 	{
-		return handle_wake_up_event(cast_wake_up_event(eh));
+		// return handle_wake_up_event(cast_wake_up_event(eh));
+		struct wake_up_event *event = cast_wake_up_event(eh);
+		msg.module_id = WAKE_UP_EVENT;
+		msg.module.wake_up = *event;
+		enqueue_msg = true;
 	}
 
-	if (state == STATE_SHUTDOWN) {
+	if ((state == STATE_SHUTDOWN) && !enqueue_msg) {
 		// Ignore messages if we are shut down
 		return false;
 	}
 
-    if (is_click_event(eh)) {
+	if (is_power_down_event(eh))
+	{
+		// return handle_power_down_event(cast_power_down_event(eh));
+		struct power_down_event *event = cast_power_down_event(eh);
+		msg.module_id = POWER_DOWN_EVENT;
+		msg.module.power_down = *event;
+		enqueue_msg = true;
+	}
+
+	if (is_click_event(eh)) {
         struct click_event *event = cast_click_event(eh);
 		msg.module_id = CLICK_EVENT;
         msg.module.btn = *event;
@@ -319,23 +345,62 @@ static bool event_handler(const struct event_header *eh)
 	}
     return false;
 }
-
-int setup(void) {
+int boot_display(const struct device* display_dev)
+{
 	int err = 0;
-	const struct device *display_dev;
-	display_dev = device_get_binding(CONFIG_LVGL_DISPLAY_DEV_NAME);
 	err = device_is_ready(display_dev);
 	if (!err) {
 		LOG_ERR("Device not ready: %d", err);
 	}
+
+
 	err = display_blanking_off(display_dev);
 	if (err) {
 		LOG_ERR("Display blanking error: %d", err);
 	}
-	lvgl_widgets_init();
+
+	// disp_widgets_init();
+	k_timer_start(&elapsed_time, K_SECONDS(CONFIG_CAF_POWER_MANAGER_TIMEOUT), K_NO_WAIT);
+	LOG_DBG("Timer started");
+	state_set(STATE_ACTIVE);
+	display_set_brightness(display_dev, 255);
 	struct display_module_event *display_module_event =
 		new_display_module_event();
 	LOG_DBG("Device usable: %d", device_usable_check(display_dev));
+	display_module_event->type = DISPLAY_EVT_REQUEST_PLATFORMS;
+	EVENT_SUBMIT(display_module_event);
+	return 0;
+}
+
+int power_down_display(const struct device* display_dev)
+{
+	LOG_DBG("Powering down display");
+	// state_set(STATE_SHUTDOWN);
+	// disp_widgets_clear();
+	k_timer_stop(&elapsed_time);
+	display_set_brightness(display_dev, 0);
+	display_blanking_on(display_dev);
+	return 0;
+}
+
+int setup(void) {
+	int err = 0;
+	// const struct device *display_dev;
+	// display_dev = device_get_binding(CONFIG_LVGL_DISPLAY_DEV_NAME);
+	// err = device_is_ready(display_dev);
+	// if (!err) {
+	// 	LOG_ERR("Device not ready: %d", err);
+	// }
+	// err = display_blanking_off(display_dev);
+	// if (err) {
+	// 	LOG_ERR("Display blanking error: %d", err);
+	// }
+
+	disp_widgets_init();
+	struct display_module_event *display_module_event =
+		new_display_module_event();
+	// display_blanking_on(display_dev);
+	// LOG_DBG("Device usable: %d", device_usable_check(display_dev));
 	display_module_event->type = DISPLAY_EVT_REQUEST_PLATFORMS;
 	EVENT_SUBMIT(display_module_event);
 	return 0;
@@ -353,8 +418,12 @@ static void module_thread_fn(void)
 	int err;
 	struct display_msg_data msg;
 	self.thread_id = k_current_get();
-	
-	err = setup();
+
+	const struct device *display_dev;
+	display_dev = device_get_binding(CONFIG_LVGL_DISPLAY_DEV_NAME);
+	disp_widgets_init();
+	err = boot_display(display_dev);
+
 	if (err) {
 		SEND_ERROR(display, DISPLAY_EVT_ERROR, err);
 	}
@@ -364,17 +433,20 @@ static void module_thread_fn(void)
 		LOG_ERR("Failed starting module, error: %d", err);
 		SEND_ERROR(display, DISPLAY_EVT_ERROR, err); 
 	}
-
+	k_timer_start(&elapsed_time, K_SECONDS(CONFIG_CAF_POWER_MANAGER_TIMEOUT), K_NO_WAIT);
+	disp_set_timer(k_timer_remaining_get(&elapsed_time) / 1000);
 	lv_task_handler();
+
 
 	while (true) {
 		if (state == STATE_SHUTDOWN) {
-			return;
+			power_down_display(display_dev);
+			lv_task_handler(); // So the display will start in welcome screen
 			err = module_get_next_msg(&self, &msg, K_FOREVER);
-			setup();
-			lv_task_handler();
+			boot_display(display_dev);
 		} else {
 			err = module_get_next_msg(&self, &msg, K_MSEC(5));
+			// boot_display(display_dev);
 		}
 		if (!err) {
 			switch (scr_state) {
@@ -395,7 +467,8 @@ static void module_thread_fn(void)
 			}
 			on_all_states(&msg);
 		}
-			lv_task_handler();
+		disp_set_timer(k_timer_remaining_get(&elapsed_time) / 1000);
+		lv_task_handler();
 	}
 }
 

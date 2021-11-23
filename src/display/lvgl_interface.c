@@ -13,6 +13,7 @@ lv_obj_t * nordic_semi_text;
 lv_obj_t * label_welcome;
 
 lv_obj_t *scr_fingerprint;
+lv_obj_t *img_fingerprint;
 lv_obj_t *label_instruction;
 lv_obj_t *arc_register_progress;
 
@@ -41,6 +42,7 @@ lv_color_t nordic_blue = LV_COLOR_MAKE(0x7f,0xd4,0xe6);
 #if CONFIG_LVGL_USE_IMG
 LV_IMG_DECLARE(nordic_semi_w150px);   // assets\nordic_semi_w150px.png
 LV_IMG_DECLARE(nordic_semi_text_w150px);   // assets\nordic_semi_text_w150px.png
+LV_IMG_DECLARE(fingerprint_w100px); // assets/fingerprint_w100px.c???
 #endif
 
 ///////////////////// FUNCTIONS ////////////////////
@@ -122,12 +124,14 @@ void initialize_timer_widget(void)
     }
 }
 
-void set_timer(int elapsed_time) 
+void disp_set_timer(int remaining_time) 
 {
+    char remaining_time_str[4]; 
+    sprintf(remaining_time_str, "%d", remaining_time);
     if (IS_ENABLED(CONFIG_LVGL_USE_BAR) && IS_ENABLED(CONFIG_CAF_POWER_MANAGER))
     {
-        lv_bar_set_value(bar_timer, elapsed_time, LV_ANIM_OFF);
-        //TODO: make the text also count down
+        lv_bar_set_value(bar_timer, remaining_time, LV_ANIM_OFF);
+        lv_label_set_text(label_timer, remaining_time_str);
     }
 }
 
@@ -145,7 +149,8 @@ void build_pages(void)
     lv_obj_add_style(scr_welcome, LV_OBJ_PART_MAIN, &style_screen);
     if (IS_ENABLED(CONFIG_LVGL_USE_IMG)) {
         nordic_semi_logo = lv_img_create(scr_welcome, NULL);
-        lv_img_set_src(nordic_semi_logo, &nordic_semi_w150px);
+        // lv_img_set_src(nordic_semi_logo, &nordic_semi_w150px);
+        lv_img_set_src(nordic_semi_logo, &fingerprint_w100px);
         lv_obj_align(nordic_semi_logo, scr_welcome, LV_ALIGN_CENTER, 0, -20);
         nordic_semi_text = lv_img_create(scr_welcome, NULL);
         lv_img_set_src(nordic_semi_text, &nordic_semi_text_w150px);
@@ -197,13 +202,13 @@ void build_pages(void)
  *                              called from display module                              *
  *                                                                                      */
 //========================================================================================
-void lvgl_widgets_init(void)
+void disp_widgets_init(void)
 {
     build_pages();
     change_screen(scr_welcome);
 }
 
-void lvgl_widgets_clear(void)
+void disp_widgets_clear(void)
 {
     lv_obj_clean(scr_welcome);
     lv_obj_clean(scr_transmit);
@@ -211,7 +216,7 @@ void lvgl_widgets_clear(void)
     lv_obj_clean(scr_select_platform);
 }
 
-struct display_data get_highlighted_option(void) 
+struct display_data disp_get_highlighted_option(void) 
 {
     struct display_data info = {
         .id = DISPLAY_NO_DATA,
@@ -224,7 +229,7 @@ struct display_data get_highlighted_option(void)
     return info;
 }
 
-void set_platform_list_contents(const char *platform_names)
+void disp_set_platform_list_contents(const char *platform_names)
 {
     lv_label_set_text(label_select_platform, "Platform select");
 
@@ -248,7 +253,7 @@ void set_platform_list_contents(const char *platform_names)
     populate_list(list_select_platform, opts, num_opts);
 }
 
-void set_screen(enum scr_state_type to_screen_state)
+void disp_set_screen(enum scr_state_type to_screen_state)
 {
     switch (to_screen_state)
     {
@@ -268,7 +273,7 @@ void set_screen(enum scr_state_type to_screen_state)
         return;
     }
 }
-void scroll_platform_list(bool up)
+void disp_scroll_platform_list(bool up)
 {
     if (up)
     {
