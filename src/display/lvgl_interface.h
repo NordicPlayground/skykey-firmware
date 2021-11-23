@@ -27,6 +27,7 @@ enum scr_state_type { SCR_STATE_WELCOME,
 void disp_widgets_init(void);
 void disp_widgets_clear(void);
 void disp_set_timer(int remaining_time);
+void disp_set_fingerprint_progress(int enroll_number);
 void disp_set_platform_list_contents(const char *platform_names);
 void disp_set_screen(enum scr_state_type to_screen);
 struct display_data disp_get_highlighted_option(void);

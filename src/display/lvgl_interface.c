@@ -14,7 +14,7 @@ lv_obj_t * label_welcome;
 
 lv_obj_t *scr_fingerprint;
 lv_obj_t *img_fingerprint;
-lv_obj_t *label_instruction;
+lv_obj_t *label_fingerprint_instruction;
 lv_obj_t *arc_register_progress;
 
 lv_obj_t * scr_select_platform;
@@ -23,6 +23,7 @@ lv_obj_t * list_select_platform;
 lv_group_t * list_group_select_platform;
 
 lv_obj_t *scr_transmit;
+lv_obj_t *img_bluetooth;
 lv_obj_t *label_transmit_info;
 
 lv_style_t * style_scr;
@@ -43,6 +44,7 @@ lv_color_t nordic_blue = LV_COLOR_MAKE(0x7f,0xd4,0xe6);
 LV_IMG_DECLARE(nordic_semi_w150px);   // assets\nordic_semi_w150px.png
 LV_IMG_DECLARE(nordic_semi_text_w150px);   // assets\nordic_semi_text_w150px.png
 LV_IMG_DECLARE(fingerprint_w100px); // assets/fingerprint_w100px.c???
+LV_IMG_DECLARE(bluetooth_w60px);
 #endif
 
 ///////////////////// FUNCTIONS ////////////////////
@@ -92,12 +94,6 @@ void populate_list(lv_obj_t *list, const char opts[CONFIG_DISPLAY_LIST_ENTRY_MAX
 
 void initialize_timer_widget(void)
 {
-    // label_welcome = lv_label_create(scr_welcome, NULL);
-    // lv_label_set_long_mode(label_welcome, LV_LABEL_LONG_BREAK);
-    // lv_label_set_align(label_welcome, LV_LABEL_ALIGN_CENTER);
-    // lv_label_set_text(label_welcome, "Welcome to Password Manager!");
-    // lv_obj_set_width(label_welcome, DISP_WIDTH - 20);
-    // lv_obj_align(label_welcome, NULL, LV_ALIGN_CENTER, 0, 0);
     label_timer = lv_label_create(scr_select_platform, NULL);
     lv_label_set_align(label_timer, LV_ALIGN_CENTER);
     lv_label_set_text(label_timer, "10");
@@ -149,8 +145,7 @@ void build_pages(void)
     lv_obj_add_style(scr_welcome, LV_OBJ_PART_MAIN, &style_screen);
     if (IS_ENABLED(CONFIG_LVGL_USE_IMG)) {
         nordic_semi_logo = lv_img_create(scr_welcome, NULL);
-        // lv_img_set_src(nordic_semi_logo, &nordic_semi_w150px);
-        lv_img_set_src(nordic_semi_logo, &fingerprint_w100px);
+        lv_img_set_src(nordic_semi_logo, &nordic_semi_w150px);
         lv_obj_align(nordic_semi_logo, scr_welcome, LV_ALIGN_CENTER, 0, -20);
         nordic_semi_text = lv_img_create(scr_welcome, NULL);
         lv_img_set_src(nordic_semi_text, &nordic_semi_text_w150px);
@@ -179,19 +174,65 @@ void build_pages(void)
     list_group_select_platform = lv_group_create();
     lv_group_add_obj(list_group_select_platform, list_select_platform);
 
-
     /* Init fingerprint register screen */
     scr_fingerprint = lv_obj_create(NULL, NULL);
-    // TODO: arc for fingerprint progress?
+    lv_obj_add_style(scr_fingerprint, LV_OBJ_PART_MAIN, &style_screen);
+
+    if (IS_ENABLED(CONFIG_LVGL_USE_ARC)) {
+        static lv_style_t style_arc_indic;
+        lv_style_init(&style_arc_indic);
+        lv_style_set_line_width(&style_arc_indic, LV_STATE_DEFAULT, 5);
+        lv_style_set_line_color(&style_arc_indic, LV_STATE_DEFAULT, nordic_blue);
+
+        static lv_style_t style_arc_bg;
+        lv_style_init(&style_arc_bg);
+        lv_style_set_border_color(&style_arc_bg, LV_STATE_DEFAULT, LV_COLOR_WHITE);
+        lv_style_set_bg_color(&style_arc_bg, LV_STATE_DEFAULT, LV_COLOR_WHITE);
+        lv_style_set_line_width(&style_arc_bg, LV_STATE_DEFAULT, 0);
+
+        arc_register_progress = lv_arc_create(scr_fingerprint, NULL);
+        lv_obj_add_style(arc_register_progress, LV_ARC_PART_INDIC, &style_arc_indic);
+        lv_obj_add_style(arc_register_progress, LV_ARC_PART_BG, &style_arc_bg);
+        lv_arc_set_bg_angles(arc_register_progress, 0, 360);
+        lv_arc_set_rotation(arc_register_progress, 90);
+        lv_arc_set_range(arc_register_progress, 0, 4);
+        lv_arc_set_value(arc_register_progress, 0);
+
+        lv_obj_set_size(arc_register_progress, 155,155);
+        lv_obj_align(arc_register_progress, NULL, LV_ALIGN_CENTER, 0, 20);
+    }
+    if (IS_ENABLED(CONFIG_LVGL_USE_IMG))
+    {
+        img_fingerprint = lv_img_create(scr_fingerprint, NULL);
+        lv_img_set_src(img_fingerprint, &fingerprint_w100px);
+        lv_obj_align(img_fingerprint, scr_fingerprint, LV_ALIGN_CENTER, 0, 20);
+    }
+
+    label_fingerprint_instruction = lv_label_create(scr_fingerprint, NULL);
+    lv_label_set_long_mode(label_fingerprint_instruction, LV_LABEL_LONG_BREAK);
+    lv_label_set_align(label_fingerprint_instruction, LV_LABEL_ALIGN_CENTER);
+    lv_label_set_text(label_fingerprint_instruction, "Plz register fingerprint");
+    lv_obj_set_width(label_fingerprint_instruction, DISP_WIDTH - 20);
+    lv_obj_align(label_fingerprint_instruction, NULL, LV_ALIGN_IN_TOP_MID, 0, 20);
+
+    // TODO: Find replacement if image+arc are not enabled
+
 
     /* Init transmission screen */
     scr_transmit = lv_obj_create(NULL, NULL);
     lv_obj_add_style(scr_transmit, LV_OBJ_PART_MAIN, &style_screen);
-    // TODO: Add bluetooth signal?
+
     label_transmit_info = lv_label_create(scr_transmit, NULL);
     lv_label_set_align(label_transmit_info, LV_LABEL_ALIGN_CENTER);
     lv_label_set_text(label_transmit_info, "Inputting password...");
-    lv_obj_align(label_transmit_info, scr_transmit, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_align(label_transmit_info, scr_transmit, LV_ALIGN_CENTER, 0, 20);
+
+    if (IS_ENABLED(CONFIG_LVGL_USE_IMG)) {
+        img_bluetooth = lv_img_create(scr_transmit, NULL);
+        lv_img_set_src(img_bluetooth, &bluetooth_w60px);
+        lv_obj_align(img_bluetooth, scr_transmit, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_align(label_transmit_info, img_bluetooth, LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
+    }
 }
 
 
@@ -273,6 +314,7 @@ void disp_set_screen(enum scr_state_type to_screen_state)
         return;
     }
 }
+
 void disp_scroll_platform_list(bool up)
 {
     if (up)
@@ -283,4 +325,8 @@ void disp_scroll_platform_list(bool up)
     {
         lv_group_send_data(list_group_select_platform, LV_KEY_DOWN);
     }
+}
+
+void disp_set_fingerprint_progress(int enroll_number) {
+    lv_arc_set_value(arc_register_progress, enroll_number);
 }
