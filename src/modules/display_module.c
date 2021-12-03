@@ -183,7 +183,6 @@ int boot_display(const struct device *display_dev)
 		LOG_ERR("Display blanking error: %d", err);
 	}
 
-	display_set_brightness(display_dev, 255);
 	struct display_module_event *display_module_event =
 		new_display_module_event();
 	LOG_DBG("Device usable: %d", device_usable_check(display_dev));
@@ -195,7 +194,6 @@ int boot_display(const struct device *display_dev)
 int power_down_display(const struct device *display_dev)
 {
 	LOG_DBG("Powering down display");
-	display_set_brightness(display_dev, 0);
 	display_blanking_on(display_dev);
 	return 0;
 }
@@ -297,10 +295,10 @@ static bool handle_power_down_event(struct power_down_event *event, const struct
 	switch (state)
 	{
 		case STATE_ACTIVE:
-			power_down_display(display_dev);
 			k_timer_stop(&elapsed_time);
+			power_down_display(display_dev);
 			state_set(STATE_SHUTDOWN);
-			lv_task_handler();
+			lv_refr_now(lv_disp_get_default());
 		break;
 		case STATE_SHUTDOWN:
 		break;
