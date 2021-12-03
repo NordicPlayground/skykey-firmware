@@ -29,9 +29,10 @@ extern "C"
 	/** @brief Password event types submitted by Password module. */
 	enum password_module_event_type
 	{
-        PASSWORD_EVT_ERROR,
         PASSWORD_EVT_READ_PLATFORMS,
         PASSWORD_EVT_READ_CHOSEN_PASSWORD,
+		PASSWORD_EVT_SHUTDOWN_READY,
+        PASSWORD_EVT_ERROR,
 	};
 
 	/** @brief Password event. */

@@ -117,6 +117,7 @@ int file_extract_content(void *read_buf, size_t read_buf_size) {
     {
         file_close_and_unmount();
         LOG_ERR("Failed in opening file: %d", rc);
+        file_close_and_unmount();
         return rc;
     }
 
@@ -124,6 +125,7 @@ int file_extract_content(void *read_buf, size_t read_buf_size) {
     if (rc < 0) {
         file_close_and_unmount();
         LOG_ERR("Failed in reading file: %d", rc);
+        file_close_and_unmount();
         return rc;
     }
     rc = file_close_and_unmount();

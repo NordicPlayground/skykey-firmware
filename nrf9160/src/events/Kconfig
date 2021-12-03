@@ -30,4 +30,8 @@ config MODEM_EVENTS_LOG
 	bool "Enable logging for modem module events"
 	default y
 
+config LOCK_EVENTS_LOG
+	bool "Enable logging for lock module events"
+	default y
+
 endif #EVENTS

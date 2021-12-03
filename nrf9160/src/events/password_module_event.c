@@ -18,6 +18,7 @@ static char *get_evt_type_str(enum password_module_event_type type)
 		return "PASSWORD_EVT_READ_PLATFORMS";
 	case PASSWORD_EVT_READ_CHOSEN_PASSWORD:
 		return "PASSWORD_EVT_READ_CHOSEN_PASSWORD";
+	case PASSWORD_EVT_SHUTDOWN_READY:
 	default:
 		return "Unknown event";
 	}

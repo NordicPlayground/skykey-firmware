@@ -21,9 +21,12 @@
 #include "events/cloud_module_event.h"
 #include "events/download_module_event.h"
 #include "events/modem_module_event.h"
+#include <caf/events/power_event.h>
 #include "util/cjson_util.h"
 
+
 #define MODULE cloud_module
+#include <caf/events/module_state_event.h>
 
 #include "modules_common.h"
 
@@ -626,6 +629,13 @@ static bool event_handler(const struct event_header *eh)
 		msg.module.modem = *evt;
 		enqueue_msg = true;
 	}
+
+	if (is_power_down_event(eh)) {
+
+		lte_lc_power_off();
+		state_set(STATE_SHUTDOWN);
+	}
+
 
 	if (enqueue_msg)
 	{

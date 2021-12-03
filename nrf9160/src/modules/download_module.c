@@ -23,6 +23,10 @@
 #include "events/cloud_module_event.h"
 
 #define MODULE download_module
+#include <caf/events/power_event.h>
+#include <caf/events/module_state_event.h>
+#include <caf/events/power_manager_event.h>
+#include <caf/events/keep_alive_event.h>
 
 #include "modules_common.h"
 
@@ -38,9 +42,14 @@ struct download_msg_data
     } module;
 };
 
-static enum state_type { STATE_DOWNLOADING,
-              STATE_FREE,
-} module_state = STATE_FREE;
+static enum state_type { STATE_DOWNLOADING, 
+			  STATE_SHUTDOWN,
+              STATE_IDLE,
+} module_state = STATE_IDLE;
+
+static enum sub_state_type { SUB_STATE_SHUTDOWN_PENDING,
+			  SUB_STATE_DEFAULT,
+} module_sub_state = SUB_STATE_DEFAULT;
 
 /* Download module message queue. */
 #define DOWNLOAD_QUEUE_ENTRY_COUNT 10
@@ -73,11 +82,39 @@ static char *state2str(enum state_type new_state)
 	{
 	case STATE_DOWNLOADING:
 		return "STATE_DOWNLOADING";
-	case STATE_FREE:
-		return "STATE_FREE";
+	case STATE_IDLE:
+		return "STATE_IDLE";
+	case STATE_SHUTDOWN:
+		return "STATE_SHUTDOWN";
 	default:
 		return "Unknown";
 	}
+}
+static char *sub_state2str(enum sub_state_type new_sub_state)
+{
+	switch (new_sub_state)
+	{
+	case SUB_STATE_DEFAULT:
+		return "SUB_STATE_DEFAULT";
+	case SUB_STATE_SHUTDOWN_PENDING:
+		return "SUB_STATE_SHUTDOWN_PENDING";
+	default:
+		return "Unknown";
+	}
+}
+
+static void sub_state_set(enum sub_state_type new_sub_state) 
+{
+	if (new_sub_state == module_sub_state)
+	{
+		LOG_DBG("State: %s", sub_state2str(module_sub_state));
+		return;
+	}
+
+	LOG_DBG("State transition: %s --> %s",
+			sub_state2str(module_sub_state),
+			sub_state2str(new_sub_state));
+	module_sub_state = new_sub_state;
 }
 
 static void state_set(enum state_type new_state)
@@ -87,6 +124,20 @@ static void state_set(enum state_type new_state)
 		LOG_DBG("State: %s", state2str(module_state));
 		return;
 	}
+
+	if (module_sub_state == SUB_STATE_SHUTDOWN_PENDING)
+	{
+		sub_state_set(SUB_STATE_DEFAULT);
+		state_set(STATE_SHUTDOWN);
+		module_set_state(MODULE_STATE_OFF);
+		return;
+	}
+
+	if (new_state == STATE_IDLE && module_state == STATE_SHUTDOWN) {
+		module_set_state(MODULE_STATE_READY);
+	}
+
+
 
 	LOG_DBG("State transition: %s --> %s",
 			state2str(module_state),
@@ -133,7 +184,7 @@ static int handle_file_fragment(const void * const fragment, size_t frag_size, s
  *                                                                                      */
 //========================================================================================
 
-static void on_state_free(struct download_msg_data *msg)
+static void on_state_idle(struct download_msg_data *msg)
 {
 	int err;
     if (IS_EVENT(msg, cloud, CLOUD_EVT_DATABASE_UPDATE_AVAILABLE)) {
@@ -177,8 +228,9 @@ static int download_client_callback(const struct download_client_evt *event)
 				SEND_ERROR(download, DOWNLOAD_EVT_STORAGE_ERROR, err);
 				download_client_disconnect(&dl_client);
 				file_close_and_unmount();
+				state_set(STATE_IDLE);
 				LOG_ERR("Could not store file. Cancelling download.");
-				state_set(STATE_FREE);
+				state_set(STATE_IDLE);
 				return err;
 			}
 			LOG_DBG("Fragment received. Size: %d", event->fragment.len);
@@ -190,7 +242,7 @@ static int download_client_callback(const struct download_client_evt *event)
 			if (file_size > CONFIG_DOWNLOAD_FILE_MAX_SIZE_BYTES) {
 				LOG_ERR("File size (%dB) too big", file_size);
 				SEND_ERROR(download, DOWNLOAD_EVT_ERROR, -EFBIG);
-				state_set(STATE_FREE);
+				state_set(STATE_IDLE);
 				return -EFBIG;
 			}
 			first_fragment = false;
@@ -201,7 +253,7 @@ static int download_client_callback(const struct download_client_evt *event)
 	case DOWNLOAD_CLIENT_EVT_DONE: {
 		download_client_disconnect(&dl_client);
 		file_close_and_unmount();
-		state_set(STATE_FREE);
+		state_set(STATE_IDLE);
 		LOG_DBG("Download complete");
 		first_fragment = true;
 		SEND_EVENT(download, DOWNLOAD_EVT_DOWNLOAD_FINISHED);
@@ -222,10 +274,11 @@ static int download_client_callback(const struct download_client_evt *event)
 			download_client_disconnect(&dl_client);
 			file_close_and_unmount();
 			first_fragment = true;
+			module_set_state(STATE_IDLE);
 			int err = event->error; /* Glue for logging */
 			LOG_ERR("An error occured while downloading: %d", err);
 			SEND_ERROR(download, DOWNLOAD_EVT_ERROR, err);
-			state_set(STATE_FREE);
+			state_set(STATE_IDLE);
 			return err;
 		}
 		break;
@@ -252,6 +305,24 @@ static bool event_handler(const struct event_header *eh)
         msg.module.cloud = *evt;
         enqueue_msg = true;
     }
+
+	if (IS_ENABLED(CONFIG_CAF_POWER_MANAGER) && is_power_down_event(eh)) {
+		if (module_state == STATE_DOWNLOADING) {
+			// Consume event if we are downloading: we are not ready to shut down!
+			LOG_DBG("Currently downloading. Consumed power down event");
+			sub_state_set(SUB_STATE_SHUTDOWN_PENDING);
+			return true;
+		} else {
+			state_set(STATE_SHUTDOWN);
+		}
+	}
+
+	if (IS_ENABLED(CONFIG_CAF_POWER_MANAGER) && is_wake_up_event(eh)) {
+		// struct wake_up_event *evt = cast_wake_up_event(eh);
+		// enqueue_msg = true;
+		sub_state_set(SUB_STATE_DEFAULT);
+		state_set(STATE_IDLE);
+	}
 
     if (enqueue_msg) {
         int err = module_enqueue_msg(&self, &msg);
@@ -287,7 +358,7 @@ static int setup(void)
 		return err;
 	}
 
-	state_set(STATE_FREE);
+	state_set(STATE_IDLE);
 	first_fragment = true;
 	socket_retries_left = CONFIG_DOWNLOAD_SOCKET_RETRIES;
     return err;
@@ -324,17 +395,15 @@ static void module_thread_fn(void)
         module_get_next_msg(&self, &msg, K_FOREVER);
         switch (module_state)
         {
-        case STATE_FREE:
-        {
-            on_state_free(&msg);
-
+        case STATE_IDLE:
+            on_state_idle(&msg);
             break;
-        }
         case STATE_DOWNLOADING:
-        {
             on_state_downloading(&msg);
             break;
-        }
+		case STATE_SHUTDOWN:
+			break;
+			
         default:
             LOG_ERR("Unknown state %d", module_state);
         }
@@ -348,3 +417,7 @@ K_THREAD_DEFINE(download_module_thread, CONFIG_DOWNLOAD_THREAD_STACK_SIZE,
 
 EVENT_LISTENER(MODULE, event_handler);
 EVENT_SUBSCRIBE(MODULE, cloud_module_event);
+#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
+EVENT_SUBSCRIBE_EARLY(MODULE, power_down_event);
+EVENT_SUBSCRIBE(MODULE, wake_up_event);
+#endif

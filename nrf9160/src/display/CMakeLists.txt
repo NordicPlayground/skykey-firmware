@@ -6,7 +6,9 @@
 
 target_include_directories(app PRIVATE .)
 target_sources_ifdef(CONFIG_DISPLAY_MODULE app PRIVATE 
-${CMAKE_CURRENT_SOURCE_DIR}/display_ui.c
+${CMAKE_CURRENT_SOURCE_DIR}/lvgl_interface.c
 ${CMAKE_CURRENT_SOURCE_DIR}/assets/nordic_semi_text_w150px.c
 ${CMAKE_CURRENT_SOURCE_DIR}/assets/nordic_semi_w150px.c
+${CMAKE_CURRENT_SOURCE_DIR}/assets/fingerprint_w100px.c
+${CMAKE_CURRENT_SOURCE_DIR}/assets/bluetooth_w60px.c
 )
