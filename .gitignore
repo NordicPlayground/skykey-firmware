@@ -1,2 +1,3 @@
-build/
+nrf9160/build
+nrf52840/build
 .vscode/

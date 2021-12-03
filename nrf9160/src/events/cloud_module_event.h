@@ -42,6 +42,7 @@ enum cloud_module_event_type
 	CLOUD_EVT_DATABASE_UPDATE_AVAILABLE,
 	CLOUD_EVT_SHUTDOWN_READY,
 	CLOUD_EVT_ERROR,
+	CLOUD_EVT_NEW_LOCK_TIMEOUT,
 };
 
 struct cloud_module_data_ack
@@ -62,6 +63,7 @@ struct cloud_module_event
 		/* Module ID, used when acknowledging shutdown requests. */
 		uint32_t id;
 		int err;
+		uint32_t timeout;
 		char url[URL_MAX_LEN];
 	} data;
 };

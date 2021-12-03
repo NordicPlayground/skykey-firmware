@@ -4,7 +4,9 @@
 # SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
 #
 
-menu "Skykey Firmware"
+menu "Skykey Firmware: nRF9160"
+
+rsource "../common/Kconfig/Kconfig"
 
 rsource "src/modules/Kconfig"
 

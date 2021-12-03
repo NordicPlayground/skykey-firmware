@@ -25,6 +25,14 @@ if DOWNLOAD_MODULE
     config DOWNLOAD_PROGRESS_EVT
         bool "Emit progress event upon receiving a download fragment"
 
+    config DOWNLOAD_MODULE_SEC_TAG
+        int "Download module TLS CA sec tag" if MODEM_MODULE_DOWNLOAD_CA_SEC_TAG < 0
+        default MODEM_MODULE_DOWNLOAD_CA_SEC_TAG
+        help
+            Security tag representing the CA certificate used for authenticating
+            and establishing an encrypted connection to the file host. Will by
+            default use the certificate provisioned by the modem module.
+
     module = DOWNLOAD_MODULE
     module-str = Download module
     source "subsys/logging/Kconfig.template.log_config"

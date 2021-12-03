@@ -28,8 +28,7 @@ extern "C" {
 enum display_module_event_type {
 	DISPLAY_EVT_PLATFORM_CHOSEN,
 	DISPLAY_EVT_REQUEST_PLATFORMS,
-	DISPLAY_EVT_SHUTDOWN_READY,
-	DISPLAY_EVT_ERROR,
+	DISPLAY_EVT_ERROR
 };
 
 /** @brief Display event. */
