@@ -35,6 +35,7 @@ lv_obj_t* label_timer;
 
 lv_color_t nordic_blue = LV_COLOR_MAKE(0x7f,0xd4,0xe6);
 
+uint32_t timeout = CONFIG_CAF_POWER_MANAGER_TIMEOUT;
 ///////////////////// SIZE ////////////////////
 #define DISP_WIDTH CONFIG_LVGL_HOR_RES_MAX
 #define DISP_HEIGHT CONFIG_LVGL_VER_RES_MAX
@@ -113,7 +114,7 @@ void initialize_timer_widget(void)
         lv_obj_set_size(bar_timer, DISP_WIDTH, 5);
         lv_obj_align_y(bar_timer, label_select_platform, LV_ALIGN_OUT_BOTTOM_MID, 9);
         lv_obj_align_x(bar_timer, scr_select_platform, LV_ALIGN_CENTER, 0);
-        lv_bar_set_range(bar_timer, 0, CONFIG_CAF_POWER_MANAGER_TIMEOUT);
+        lv_bar_set_range(bar_timer, 0, timeout);
         lv_bar_set_value(bar_timer, 10, LV_ANIM_OFF);
         lv_obj_add_style(bar_timer, LV_BAR_PART_BG, &style_bar_bg);
         lv_obj_add_style(bar_timer, LV_BAR_PART_INDIC, &style_bar);
@@ -131,6 +132,12 @@ void disp_set_timer(int remaining_time)
     }
 }
 
+void disp_set_timeout_interval(int timeout_seconds) {
+    timeout = timeout_seconds;
+    if (IS_ENABLED(CONFIG_LVGL_USE_BAR) && IS_ENABLED(CONFIG_CAF_POWER_MANAGER)) {
+        lv_bar_set_range(bar_timer, 0, timeout);
+    }
+}
 
 ///////////////////// SCREENS ////////////////////
 void build_pages(void)

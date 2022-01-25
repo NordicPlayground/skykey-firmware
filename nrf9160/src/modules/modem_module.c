@@ -21,6 +21,7 @@
 #include <caf/events/power_event.h>
 #include <caf/events/module_state_event.h>
 #include <caf/events/power_manager_event.h>
+#include <caf/events/click_event.h>
 
 
 #include <logging/log.h>
@@ -125,6 +126,9 @@ static bool event_handler(const struct event_header *eh)
 
         msg.module.modem = *evt;
         enqueue_msg = true;
+    }
+    if (is_click_event(eh)) {
+        // power_manager_configure_timeout(MODULE_IDX(MODULE), 60);
     }
 
     if (is_cloud_module_event(eh))
@@ -263,11 +267,10 @@ static int provision_certs(void)
 {
     int err;
     bool exists;
-    uint8_t unused;
 
     err = modem_key_mgmt_exists(DL_CA_SEC_TAG,
                                 MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN,
-                                &exists, &unused);
+                                &exists);
     if (err)
     {
         LOG_ERR("Failed to check for certificates at sec tag %d. Err: %d", DL_CA_SEC_TAG, err);
@@ -560,3 +563,4 @@ EVENT_SUBSCRIBE(MODULE, wake_up_event);
 #endif
 EVENT_SUBSCRIBE(MODULE, cloud_module_event);
 EVENT_SUBSCRIBE_FINAL(MODULE, util_module_event);
+EVENT_SUBSCRIBE(MODULE, click_event);

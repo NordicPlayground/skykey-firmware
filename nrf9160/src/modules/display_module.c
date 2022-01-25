@@ -16,10 +16,11 @@
 #include <settings/settings.h>
 #include <sys/reboot.h>
 
-#include <caf/events/click_event.h>
-#include <caf/events/module_state_event.h>
 
 #define MODULE display_module
+#include <caf/events/click_event.h>
+#include <caf/events/module_state_event.h>
+#include <caf/events/power_manager_event.h>
 
 #include "modules_common.h"
 #include "display/lvgl_interface.h"
@@ -45,6 +46,12 @@ static bool handle_power_down_event(struct power_down_event *event, const struct
 static bool handle_wake_up_event(struct wake_up_event* event, const struct device* display_dev);
 #endif
 
+#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER_RUNTIME_TIMEOUT_SET) 
+uint32_t timeout_interval = CONFIG_CAF_POWER_MANAGER_TIMEOUT;
+#else
+static uint32_t timeout_interval = CONFIG_CAF_POWER_MANAGER_TIMEOUT;
+#endif
+
 K_TIMER_DEFINE(elapsed_time, NULL, NULL);
 int enroll_number = 0; // For testing purposes only. This will come from the fingerprint module
 struct display_msg_data {
@@ -55,10 +62,13 @@ struct display_msg_data {
     union {
         struct click_event btn;
 		struct password_module_event password;
-		#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
+#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
 		struct power_down_event power_down;
 		struct wake_up_event wake_up;
-		#endif
+#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER_RUNTIME_TIMEOUT_SET)
+		struct power_manager_configure_timeout_event configure_timeout;
+#endif
+#endif
     } module;
 };
 
@@ -68,7 +78,10 @@ enum module_id
 	PASSWORD_MODULE_EVENT,
 #if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
 	POWER_DOWN_EVENT,
-	WAKE_UP_EVENT
+	WAKE_UP_EVENT,
+#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER_RUNTIME_TIMEOUT_SET)
+	POWER_MANAGER_TIMEOUT_SET_EVENT,
+#endif
 #endif
 };
 
@@ -219,6 +232,7 @@ static void on_state_scr_select_platform(struct display_msg_data *msg)
 		int click = msg->module.btn.click;
 		if (button_pressed == BTN_DOWN) {
 			if (click == CLICK_LONG) {
+				power_manager_configure_timeout(MODULE_IDX(MODULE), 60);
 				scr_state_set(SCR_STATE_WELCOME);
 			} else {
 				disp_scroll_platform_list(false);
@@ -320,7 +334,7 @@ static bool handle_wake_up_event(struct wake_up_event *event, const struct devic
 			state_set(STATE_ACTIVE);
 			enroll_number = 0;
 			disp_set_fingerprint_progress(enroll_number);
-			k_timer_start(&elapsed_time, K_SECONDS(CONFIG_CAF_POWER_MANAGER_TIMEOUT), K_NO_WAIT);
+			k_timer_start(&elapsed_time, K_SECONDS(timeout_interval), K_NO_WAIT);
 			boot_display(display_dev);
 
 			break;
@@ -342,6 +356,18 @@ static bool event_handler(const struct event_header *eh)
 		msg.module_id = WAKE_UP_EVENT;
 		msg.module.wake_up = *event;
 		enqueue_msg = true;
+	}
+
+	if (is_power_manager_configure_timeout_event(eh)) {
+		struct power_manager_configure_timeout_event *event = cast_power_manager_configure_timeout_event(eh);
+		if (event->timeout_setting == POWER_DOWN_TIMEOUT) 
+		{
+			LOG_INF("Received configure_timeout event!");
+			memcpy(&timeout_interval, &(event->timeout_seconds), sizeof(int));
+			LOG_INF("Successfully copied timeout interval: %d", timeout_interval);
+			disp_set_timeout_interval(timeout_interval);
+			// timeout_interval = event->timeout_seconds;
+		}
 	}
 
 	if ((state == STATE_SHUTDOWN) && !enqueue_msg) {
@@ -408,10 +434,9 @@ static void module_thread_fn(void)
 		LOG_ERR("Failed starting module, error: %d", err);
 		SEND_ERROR(display, DISPLAY_EVT_ERROR, err); 
 	}
-	k_timer_start(&elapsed_time, K_SECONDS(CONFIG_CAF_POWER_MANAGER_TIMEOUT), K_NO_WAIT);
+	k_timer_start(&elapsed_time, K_SECONDS(timeout_interval), K_NO_WAIT);
 	disp_set_timer(k_timer_remaining_get(&elapsed_time) / 1000);
 	lv_task_handler();
-
 
 	while (true) {
 		if (state == STATE_SHUTDOWN) {
@@ -450,7 +475,11 @@ K_THREAD_DEFINE(display_module_thread, CONFIG_DISPLAY_THREAD_STACK_SIZE,
 EVENT_LISTENER(MODULE, event_handler);
 EVENT_SUBSCRIBE(MODULE, click_event);
 EVENT_SUBSCRIBE(MODULE, password_module_event);
+EVENT_SUBSCRIBE(MODULE, module_state_event);
 #if IS_ENABLED(CONFIG_CAF_POWER_MANAGER)
 EVENT_SUBSCRIBE_EARLY(MODULE, power_down_event);
 EVENT_SUBSCRIBE(MODULE, wake_up_event);
+#if IS_ENABLED(CONFIG_CAF_POWER_MANAGER_RUNTIME_TIMEOUT_SET) 
+EVENT_SUBSCRIBE(MODULE, power_manager_configure_timeout_event);
+#endif
 #endif
